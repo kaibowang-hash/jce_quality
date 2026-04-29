@@ -1,0 +1,201 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "format:PQRS-.YYYY.-.#####",
+ "creation": "2026-04-29 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "status",
+  "quality_node",
+  "due_at",
+  "last_reminded_at",
+  "reminder_count",
+  "source_section",
+  "work_order_scheduling",
+  "scheduling_item",
+  "latest_quality_check",
+  "item_code",
+  "column_break_source",
+  "company",
+  "plant_floor",
+  "workstation",
+  "shift_type",
+  "recipient_section",
+  "reminder_users",
+  "closed_by",
+  "closed_at"
+ ],
+ "fields": [
+  {
+   "default": "Open",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Open\nClosed"
+  },
+  {
+   "default": "Patrol",
+   "fieldname": "quality_node",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Quality Node",
+   "options": "\nPatrol",
+   "reqd": 1
+  },
+  {
+   "fieldname": "due_at",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Due At",
+   "reqd": 1
+  },
+  {
+   "fieldname": "last_reminded_at",
+   "fieldtype": "Datetime",
+   "label": "Last Reminded At"
+  },
+  {
+   "default": "0",
+   "fieldname": "reminder_count",
+   "fieldtype": "Int",
+   "label": "Reminder Count"
+  },
+  {
+   "fieldname": "source_section",
+   "fieldtype": "Section Break",
+   "label": "Source"
+  },
+  {
+   "fieldname": "work_order_scheduling",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Work Order Scheduling",
+   "options": "Work Order Scheduling",
+   "reqd": 1
+  },
+  {
+   "fieldname": "scheduling_item",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "label": "Scheduling Item Row",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "latest_quality_check",
+   "fieldtype": "Link",
+   "label": "Latest Quality Check",
+   "options": "Production Quality Check"
+  },
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "label": "Item Code",
+   "options": "Item"
+  },
+  {
+   "fieldname": "column_break_source",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "fieldname": "plant_floor",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Plant Floor",
+   "options": "Plant Floor"
+  },
+  {
+   "fieldname": "workstation",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Workstation",
+   "options": "Workstation"
+  },
+  {
+   "fieldname": "shift_type",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "label": "Shift Type"
+  },
+  {
+   "fieldname": "recipient_section",
+   "fieldtype": "Section Break",
+   "label": "Recipients"
+  },
+  {
+   "fieldname": "reminder_users",
+   "fieldtype": "Small Text",
+   "label": "Reminder Users"
+  },
+  {
+   "fieldname": "closed_by",
+   "fieldtype": "Link",
+   "label": "Closed By",
+   "options": "User"
+  },
+  {
+   "fieldname": "closed_at",
+   "fieldtype": "Datetime",
+   "label": "Closed At"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-04-29 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "JCE Quality",
+ "name": "Production Quality Reminder State",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Quality Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Manufacturing Manager",
+   "share": 1
+  }
+ ],
+ "search_fields": "work_order_scheduling,scheduling_item,item_code,plant_floor,workstation,status",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

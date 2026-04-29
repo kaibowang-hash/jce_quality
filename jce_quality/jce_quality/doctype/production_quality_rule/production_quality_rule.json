@@ -1,0 +1,192 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "allow_rename": 1,
+ "autoname": "format:PQR-.YYYY.-.#####",
+ "creation": "2026-04-28 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled_section",
+  "disabled",
+  "quality_node",
+  "is_mandatory",
+  "column_break_scope",
+  "company",
+  "plant_floor",
+  "workstation",
+  "item_code",
+  "item_group",
+  "template_section",
+  "quality_inspection_template",
+  "requires_sample",
+  "required_sample_type",
+  "column_break_frequency",
+  "minimum_patrol_count",
+  "patrol_interval_mins",
+  "remarks"
+ ],
+ "fields": [
+  {
+   "fieldname": "enabled_section",
+   "fieldtype": "Section Break",
+   "label": "Rule"
+  },
+  {
+   "default": "0",
+   "fieldname": "disabled",
+   "fieldtype": "Check",
+   "label": "Disabled"
+  },
+  {
+   "fieldname": "quality_node",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Quality Node",
+   "options": "\nFirst Article\nPatrol\nLast Article\nFinal Release",
+   "reqd": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "is_mandatory",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Mandatory Gate"
+  },
+  {
+   "fieldname": "column_break_scope",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "fieldname": "plant_floor",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Plant Floor",
+   "options": "Plant Floor"
+  },
+  {
+   "fieldname": "workstation",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Workstation",
+   "options": "Workstation"
+  },
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Item Code",
+   "options": "Item"
+  },
+  {
+   "fieldname": "item_group",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Item Group",
+   "options": "Item Group"
+  },
+  {
+   "fieldname": "template_section",
+   "fieldtype": "Section Break",
+   "label": "Inspection Standard"
+  },
+  {
+   "fieldname": "quality_inspection_template",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Quality Inspection Template",
+   "options": "Quality Inspection Template"
+  },
+  {
+   "default": "1",
+   "fieldname": "requires_sample",
+   "fieldtype": "Check",
+   "label": "Require Sample Manager Reference"
+  },
+  {
+   "depends_on": "requires_sample",
+   "fieldname": "required_sample_type",
+   "fieldtype": "Select",
+   "label": "Required Sample Type",
+   "options": "\nGDN - Golden Sample\nSTD - Standard Sample\nFAI1 - First Article Sample (EB)\nPFAI - In-process FA Sample\nLMT - Limit Sample\nOQC - OQC Retained Sample\nEXS - Experimental Sample (TPR)\nMAT - Mating Part Sample (External)\nFGS - Final Product Sample (External)\nQTS - Quotation Sample (External)"
+  },
+  {
+   "fieldname": "column_break_frequency",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "depends_on": "eval:doc.quality_node==='Patrol'",
+   "fieldname": "minimum_patrol_count",
+   "fieldtype": "Int",
+   "label": "Minimum Patrol Count"
+  },
+  {
+   "depends_on": "eval:doc.quality_node==='Patrol'",
+   "fieldname": "patrol_interval_mins",
+   "fieldtype": "Int",
+   "label": "Patrol Interval (Minutes)"
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-04-28 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "JCE Quality",
+ "name": "Production Quality Rule",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Quality Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Manufacturing Manager",
+   "share": 1
+  }
+ ],
+ "search_fields": "quality_node,item_code,item_group,workstation,plant_floor",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

@@ -1,0 +1,163 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "allow_rename": 1,
+ "autoname": "format:PQRR-.YYYY.-.#####",
+ "creation": "2026-04-29 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled_section",
+  "disabled",
+  "quality_node",
+  "repeat_interval_mins",
+  "scope_section",
+  "company",
+  "plant_floor",
+  "workstation",
+  "column_break_scope",
+  "shift_type",
+  "recipients_section",
+  "reminder_users",
+  "reminder_role",
+  "remarks"
+ ],
+ "fields": [
+  {
+   "fieldname": "enabled_section",
+   "fieldtype": "Section Break",
+   "label": "Reminder Rule"
+  },
+  {
+   "default": "0",
+   "fieldname": "disabled",
+   "fieldtype": "Check",
+   "in_standard_filter": 1,
+   "label": "Disabled"
+  },
+  {
+   "default": "Patrol",
+   "fieldname": "quality_node",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Quality Node",
+   "options": "\nPatrol",
+   "reqd": 1
+  },
+  {
+   "default": "30",
+   "fieldname": "repeat_interval_mins",
+   "fieldtype": "Int",
+   "label": "Overdue Repeat Interval (Minutes)"
+  },
+  {
+   "fieldname": "scope_section",
+   "fieldtype": "Section Break",
+   "label": "Scope"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "fieldname": "plant_floor",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Plant Floor",
+   "options": "Plant Floor"
+  },
+  {
+   "fieldname": "workstation",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Workstation",
+   "options": "Workstation"
+  },
+  {
+   "fieldname": "column_break_scope",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "shift_type",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "label": "Shift Type"
+  },
+  {
+   "fieldname": "recipients_section",
+   "fieldtype": "Section Break",
+   "label": "Recipients"
+  },
+  {
+   "description": "Comma separated User IDs or email addresses.",
+   "fieldname": "reminder_users",
+   "fieldtype": "Small Text",
+   "label": "Reminder Users"
+  },
+  {
+   "default": "Quality Manager",
+   "fieldname": "reminder_role",
+   "fieldtype": "Link",
+   "label": "Reminder Role",
+   "options": "Role"
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-04-29 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "JCE Quality",
+ "name": "Production Quality Reminder Rule",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Quality Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Manufacturing Manager",
+   "share": 1
+  }
+ ],
+ "search_fields": "quality_node,plant_floor,workstation,shift_type,reminder_role",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

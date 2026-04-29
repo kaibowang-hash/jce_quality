@@ -1,0 +1,491 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-04-28 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "status",
+  "quality_node",
+  "overall_status",
+  "column_break_status",
+  "inspection_started_at",
+  "inspection_finished_at",
+  "inspected_by",
+  "source_section",
+  "work_order_scheduling",
+  "scheduling_item",
+  "work_order",
+  "company",
+  "item_code",
+  "item_name",
+  "item_group",
+  "column_break_source",
+  "posting_date",
+  "shift_type",
+  "plant_floor",
+  "workstation",
+  "mold",
+  "scheduling_qty",
+  "completed_qty",
+  "defect_qty",
+  "standard_section",
+  "production_quality_rule",
+  "quality_inspection_template",
+  "manual_inspection",
+  "requires_sample",
+  "required_sample_type",
+  "sample_manager",
+  "sample_ref",
+  "sample_status",
+  "sample_type",
+  "readings_section",
+  "readings",
+  "defects_section",
+  "defects",
+  "defect_photos_section",
+  "defect_photos",
+  "disposition_section",
+  "disposition",
+  "disposition_remarks",
+  "column_break_disposition",
+  "disposition_by",
+  "disposition_at",
+  "release_approved",
+  "release_approved_by",
+  "release_approved_at",
+  "remarks",
+  "attachments_section",
+  "inspection_photo",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "no_copy": 1,
+   "options": "PQC-.YY.-",
+   "reqd": 1,
+   "set_only_once": 1
+  },
+  {
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Workflow Status",
+   "options": "Draft\nIn Progress\nAccepted\nRejected\nConcession Released\nCancelled",
+   "read_only": 1
+  },
+  {
+   "fieldname": "quality_node",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Quality Node",
+   "options": "\nFirst Article\nPatrol\nLast Article\nFinal Release",
+   "reqd": 1
+  },
+  {
+   "default": "Pending",
+   "fieldname": "overall_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Inspection Result",
+   "options": "Pending\nAccepted\nRejected\nConcession Released",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_status",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "inspection_started_at",
+   "fieldtype": "Datetime",
+   "label": "Started At"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "inspection_finished_at",
+   "fieldtype": "Datetime",
+   "label": "Finished At"
+  },
+  {
+   "default": "user",
+   "fieldname": "inspected_by",
+   "fieldtype": "Link",
+   "label": "Inspected By",
+   "options": "User",
+   "reqd": 1
+  },
+  {
+   "fieldname": "source_section",
+   "fieldtype": "Section Break",
+   "label": "Production Batch"
+  },
+  {
+   "fieldname": "work_order_scheduling",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Work Order Scheduling",
+   "options": "Work Order Scheduling",
+   "reqd": 1
+  },
+  {
+   "fieldname": "scheduling_item",
+   "fieldtype": "Data",
+   "label": "Scheduling Item Row",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "work_order",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Work Order",
+   "options": "Work Order",
+   "read_only": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "read_only": 1
+  },
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "in_global_search": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Item Code",
+   "options": "Item",
+   "read_only": 1
+  },
+  {
+   "fieldname": "item_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Item Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "item_group",
+   "fieldtype": "Link",
+   "label": "Item Group",
+   "options": "Item Group",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_source",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "posting_date",
+   "fieldtype": "Date",
+   "in_standard_filter": 1,
+   "label": "Posting Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "shift_type",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "label": "Shift Type",
+   "read_only": 1
+  },
+  {
+   "fieldname": "plant_floor",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Plant Floor",
+   "options": "Plant Floor",
+   "read_only": 1
+  },
+  {
+   "fieldname": "workstation",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Workstation",
+   "options": "Workstation",
+   "read_only": 1
+  },
+  {
+   "fieldname": "mold",
+   "fieldtype": "Data",
+   "label": "Mold",
+   "read_only": 1
+  },
+  {
+   "fieldname": "scheduling_qty",
+   "fieldtype": "Float",
+   "label": "Scheduling Qty",
+   "read_only": 1
+  },
+  {
+   "fieldname": "completed_qty",
+   "fieldtype": "Float",
+   "label": "Completed Qty",
+   "read_only": 1
+  },
+  {
+   "fieldname": "defect_qty",
+   "fieldtype": "Float",
+   "label": "Defect Qty",
+   "read_only": 1
+  },
+  {
+   "fieldname": "standard_section",
+   "fieldtype": "Section Break",
+   "label": "Inspection Standard"
+  },
+  {
+   "fieldname": "production_quality_rule",
+   "fieldtype": "Link",
+   "label": "Production Quality Rule",
+   "options": "Production Quality Rule",
+   "read_only": 1
+  },
+  {
+   "fieldname": "quality_inspection_template",
+   "fieldtype": "Link",
+   "label": "Quality Inspection Template",
+   "options": "Quality Inspection Template"
+  },
+  {
+   "default": "0",
+   "fieldname": "manual_inspection",
+   "fieldtype": "Check",
+   "label": "Manual Result"
+  },
+  {
+   "default": "1",
+   "fieldname": "requires_sample",
+   "fieldtype": "Check",
+   "label": "Requires Sample",
+   "read_only": 1
+  },
+  {
+   "fieldname": "required_sample_type",
+   "fieldtype": "Data",
+   "label": "Required Sample Type",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sample_manager",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Sample Manager",
+   "options": "Sample Manager"
+  },
+  {
+   "fieldname": "sample_ref",
+   "fieldtype": "Data",
+   "label": "Sample Ref",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sample_status",
+   "fieldtype": "Data",
+   "label": "Sample Status",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sample_type",
+   "fieldtype": "Data",
+   "label": "Sample Type",
+   "read_only": 1
+  },
+  {
+   "fieldname": "readings_section",
+   "fieldtype": "Section Break",
+   "label": "Readings"
+  },
+  {
+   "fieldname": "readings",
+   "fieldtype": "Table",
+   "label": "Readings",
+   "options": "Quality Inspection Reading"
+  },
+  {
+   "fieldname": "defects_section",
+   "fieldtype": "Section Break",
+   "label": "Defects"
+  },
+  {
+   "fieldname": "defects",
+   "fieldtype": "Table",
+   "label": "Defects",
+   "options": "Production Quality Defect"
+  },
+  {
+   "fieldname": "defect_photos_section",
+   "fieldtype": "Section Break",
+   "label": "Defect Photos"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "defect_photos",
+   "fieldtype": "Table",
+   "label": "Defect Photos",
+   "options": "Production Quality Photo"
+  },
+  {
+   "fieldname": "disposition_section",
+   "fieldtype": "Section Break",
+   "label": "NG Disposition"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "disposition",
+   "fieldtype": "Select",
+   "label": "Disposition",
+   "options": "\nRework\nScrap\nConcession Release"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "disposition_remarks",
+   "fieldtype": "Small Text",
+   "label": "Disposition Remarks"
+  },
+  {
+   "fieldname": "column_break_disposition",
+   "fieldtype": "Column Break"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "disposition_by",
+   "fieldtype": "Link",
+   "label": "Disposition By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "disposition_at",
+   "fieldtype": "Datetime",
+   "label": "Disposition At",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "default": "0",
+   "fieldname": "release_approved",
+   "fieldtype": "Check",
+   "label": "Concession Release Approved",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "release_approved_by",
+   "fieldtype": "Link",
+   "label": "Approved By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "release_approved_at",
+   "fieldtype": "Datetime",
+   "label": "Approved At",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "remarks",
+   "fieldtype": "Text",
+   "label": "Remarks"
+  },
+  {
+   "fieldname": "attachments_section",
+   "fieldtype": "Section Break",
+   "label": "Attachment"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "inspection_photo",
+   "fieldtype": "Attach Image",
+   "label": "Inspection Photo"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Production Quality Check",
+   "print_hide": 1,
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-04-28 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "JCE Quality",
+ "name": "Production Quality Check",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Quality Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Manufacturing Manager",
+   "share": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Manufacturing User",
+   "share": 1
+  }
+ ],
+ "search_fields": "work_order_scheduling,work_order,item_code,item_name,quality_node,overall_status",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
