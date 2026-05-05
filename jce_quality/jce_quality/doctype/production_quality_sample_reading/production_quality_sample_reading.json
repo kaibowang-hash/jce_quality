@@ -1,0 +1,131 @@
+{
+ "actions": [],
+ "creation": "2026-05-05 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "sample_no",
+  "specification",
+  "reading_value",
+  "status",
+  "source_reading_idx",
+  "parameter_group",
+  "inspection_method",
+  "inspection_standard",
+  "value",
+  "numeric",
+  "min_value",
+  "max_value",
+  "formula_based_criteria",
+  "acceptance_formula"
+ ],
+ "fields": [
+  {
+   "fieldname": "sample_no",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Sample No.",
+   "reqd": 1
+  },
+  {
+   "fieldname": "specification",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Parameter",
+   "options": "Quality Inspection Parameter",
+   "reqd": 1
+  },
+  {
+   "fieldname": "reading_value",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Reading Value"
+  },
+  {
+   "default": "Accepted",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "\nAccepted\nRejected",
+   "read_only": 1
+  },
+  {
+   "fieldname": "source_reading_idx",
+   "fieldtype": "Int",
+   "label": "Source Reading Row"
+  },
+  {
+   "fieldname": "parameter_group",
+   "fieldtype": "Link",
+   "label": "Parameter Group",
+   "options": "Quality Inspection Parameter Group",
+   "read_only": 1
+  },
+  {
+   "fieldname": "inspection_method",
+   "fieldtype": "Link",
+   "label": "Inspection Method",
+   "options": "Quality Inspection Method",
+   "read_only": 1
+  },
+  {
+   "fieldname": "inspection_standard",
+   "fieldtype": "Small Text",
+   "label": "Inspection Standard",
+   "read_only": 1
+  },
+  {
+   "fieldname": "value",
+   "fieldtype": "Data",
+   "label": "Acceptance Criteria Value",
+   "read_only": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "numeric",
+   "fieldtype": "Check",
+   "label": "Numeric",
+   "read_only": 1
+  },
+  {
+   "fieldname": "min_value",
+   "fieldtype": "Float",
+   "label": "Minimum Value",
+   "read_only": 1
+  },
+  {
+   "fieldname": "max_value",
+   "fieldtype": "Float",
+   "label": "Maximum Value",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "formula_based_criteria",
+   "fieldtype": "Check",
+   "label": "Formula Based Criteria",
+   "read_only": 1
+  },
+  {
+   "fieldname": "acceptance_formula",
+   "fieldtype": "Code",
+   "label": "Acceptance Criteria Formula",
+   "options": "PythonExpression",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-05-05 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "JCE Quality",
+ "name": "Production Quality Sample Reading",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "creation",
+ "sort_order": "ASC",
+ "states": []
+}

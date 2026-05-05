@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"id\":\"quality-control-header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Quality Control</b></span>\",\"col\":12}},{\"id\":\"shortcut-terminal\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Inspection Terminal\",\"col\":3}},{\"id\":\"shortcut-board\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Quality Board\",\"col\":3}},{\"id\":\"shortcut-analytics\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Quality Analytics\",\"col\":3}},{\"id\":\"shortcut-check\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Production Quality Check\",\"col\":3}},{\"id\":\"shortcut-rule\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Production Quality Rule\",\"col\":3}},{\"id\":\"shortcut-defect-code\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Quality Defect Code\",\"col\":3}},{\"id\":\"card-quality-master\",\"type\":\"card\",\"data\":{\"card_name\":\"Quality Setup\",\"col\":4}},{\"id\":\"card-quality-execution\",\"type\":\"card\",\"data\":{\"card_name\":\"Quality Execution\",\"col\":4}},{\"id\":\"card-quality-standard\",\"type\":\"card\",\"data\":{\"card_name\":\"ERPNext Standards\",\"col\":4}}]",
+ "content": "[{\"id\":\"quality-control-header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Quality Control</b></span>\",\"col\":12}},{\"id\":\"shortcut-terminal\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Inspection Terminal\",\"col\":3}},{\"id\":\"shortcut-template\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Quality Inspection Template\",\"col\":3}},{\"id\":\"shortcut-dmr\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"DMR - Defect Material Report\",\"col\":3}},{\"id\":\"shortcut-check\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Production Quality Check\",\"col\":3}},{\"id\":\"shortcut-board\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Quality Board\",\"col\":3}},{\"id\":\"shortcut-analytics\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Quality Analytics\",\"col\":3}},{\"id\":\"shortcut-settings\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"JCE Quality Settings\",\"col\":3}},{\"id\":\"card-quality-master\",\"type\":\"card\",\"data\":{\"card_name\":\"Quality Master Data\",\"col\":4}},{\"id\":\"card-quality-execution\",\"type\":\"card\",\"data\":{\"card_name\":\"Quality Execution\",\"col\":4}},{\"id\":\"card-quality-nonconformance\",\"type\":\"card\",\"data\":{\"card_name\":\"Nonconformance\",\"col\":4}},{\"id\":\"card-quality-control\",\"type\":\"card\",\"data\":{\"card_name\":\"Quality Gate\",\"col\":4}},{\"id\":\"card-quality-standard\",\"type\":\"card\",\"data\":{\"card_name\":\"ERPNext Standards\",\"col\":4}}]",
  "custom_blocks": [],
  "doctype": "Workspace",
  "for_user": "",
@@ -9,9 +9,21 @@
  "label": "Quality Control",
  "links": [
   {
-   "label": "Quality Setup",
-   "link_count": 5,
+   "label": "Quality Master Data",
+   "link_count": 6,
    "type": "Card Break"
+  },
+  {
+   "label": "Quality Inspection Template",
+   "link_to": "Quality Inspection Template",
+   "link_type": "DocType",
+   "type": "Link"
+  },
+  {
+   "label": "JCE Quality Settings",
+   "link_to": "JCE Quality Settings",
+   "link_type": "DocType",
+   "type": "Link"
   },
   {
    "label": "Production Quality Rule",
@@ -28,12 +40,6 @@
   {
    "label": "Quality Defect Code",
    "link_to": "Quality Defect Code",
-   "link_type": "DocType",
-   "type": "Link"
-  },
-  {
-   "label": "Quality Inspection Template",
-   "link_to": "Quality Inspection Template",
    "link_type": "DocType",
    "type": "Link"
   },
@@ -85,19 +91,35 @@
    "type": "Link"
   },
   {
-   "label": "ERPNext Standards",
-   "link_count": 2,
+   "label": "Nonconformance",
+   "link_count": 1,
    "type": "Card Break"
   },
   {
-   "label": "Sample Manager",
-   "link_to": "Sample Manager",
+   "label": "DMR - Defect Material Report",
+   "link_to": "DMR",
    "link_type": "DocType",
    "type": "Link"
   },
   {
-   "label": "Quality Inspection",
-   "link_to": "Quality Inspection",
+   "label": "Quality Gate",
+   "link_count": 1,
+   "type": "Card Break"
+  },
+  {
+   "label": "Quality Gate Bypass",
+   "link_to": "Quality Gate Bypass",
+   "link_type": "DocType",
+   "type": "Link"
+  },
+  {
+   "label": "ERPNext Standards",
+   "link_count": 1,
+   "type": "Card Break"
+  },
+  {
+   "label": "Reference Sample",
+   "link_to": "Sample Manager",
    "link_type": "DocType",
    "type": "Link"
   }
@@ -128,6 +150,27 @@
    "type": "Page"
   },
   {
+   "color": "Green",
+   "doc_view": "List",
+   "label": "Quality Inspection Template",
+   "link_to": "Quality Inspection Template",
+   "type": "DocType"
+  },
+  {
+   "color": "Red",
+   "doc_view": "List",
+   "label": "DMR - Defect Material Report",
+   "link_to": "DMR",
+   "type": "DocType"
+  },
+  {
+   "color": "Green",
+   "doc_view": "List",
+   "label": "Production Quality Check",
+   "link_to": "Production Quality Check",
+   "type": "DocType"
+  },
+  {
    "color": "Grey",
    "doc_view": "",
    "label": "Quality Board",
@@ -142,24 +185,10 @@
    "type": "Page"
   },
   {
-   "color": "Green",
-   "doc_view": "List",
-   "label": "Production Quality Check",
-   "link_to": "Production Quality Check",
-   "type": "DocType"
-  },
-  {
    "color": "Grey",
    "doc_view": "List",
-   "label": "Production Quality Rule",
-   "link_to": "Production Quality Rule",
-   "type": "DocType"
-  },
-  {
-   "color": "Red",
-   "doc_view": "List",
-   "label": "Quality Defect Code",
-   "link_to": "Quality Defect Code",
+   "label": "JCE Quality Settings",
+   "link_to": "JCE Quality Settings",
    "type": "DocType"
   }
  ],

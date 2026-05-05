@@ -22,6 +22,17 @@ QUALITY_INDEXES = {
 	"Production Quality Reminder Rule": [
 		("jce_qrr_node_scope", ["disabled", "quality_node", "company", "plant_floor", "workstation", "shift_type"]),
 	],
+	"DMR": [
+		("jce_dmr_source_item", ["source_doctype", "source_name", "item_code", "docstatus"]),
+		("jce_dmr_type_status_company", ["dmr_type", "status", "company"]),
+	],
+	"Quality Gate Bypass": [
+		("jce_qgb_stock_reference", ["status", "reference_doctype", "reference_name", "company"]),
+		("jce_qgb_schedule_status", ["status", "work_order_scheduling", "company"]),
+	],
+	"Scheduling Item": [
+		("jce_si_work_order_parent", ["work_order", "parent"]),
+	],
 }
 
 

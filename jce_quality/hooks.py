@@ -260,14 +260,26 @@ required_apps = ["erpnext", "zelin_pp"]
 
 doctype_js = {
 	"Work Order Scheduling": "public/js/work_order_scheduling.js",
+	"Quality Inspection": "public/js/dmr_source_buttons.js",
+	"Delivery Note": "public/js/dmr_source_buttons.js",
+	"Quality Inspection Template": "public/js/quality_inspection_template.js",
 }
 
+before_migrate = "jce_quality.install.before_migrate"
 after_install = "jce_quality.install.after_install"
 after_migrate = "jce_quality.install.after_migrate"
 
 doc_events = {
 	"Stock Entry": {
 		"before_submit": "jce_quality.services.quality.validate_stock_entry_quality_gate",
+	},
+	"Item": {
+		"on_update": "jce_quality.services.template_baseline.handle_item_af_change",
+	},
+	"Quality Inspection Template": {
+		"before_insert": "jce_quality.services.template_baseline.before_insert_template",
+		"validate": "jce_quality.services.template_baseline.validate_template",
+		"on_update": "jce_quality.services.template_baseline.on_update_template",
 	},
 }
 

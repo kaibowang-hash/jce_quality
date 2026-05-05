@@ -21,9 +21,11 @@
   "quality_inspection_template",
   "requires_sample",
   "required_sample_type",
+  "reference_sample",
   "column_break_frequency",
   "minimum_patrol_count",
   "patrol_interval_mins",
+  "max_defect_rate",
   "remarks"
  ],
  "fields": [
@@ -110,7 +112,7 @@
    "default": "1",
    "fieldname": "requires_sample",
    "fieldtype": "Check",
-   "label": "Require Sample Manager Reference"
+   "label": "Require Reference Sample"
   },
   {
    "depends_on": "requires_sample",
@@ -118,6 +120,13 @@
    "fieldtype": "Select",
    "label": "Required Sample Type",
    "options": "\nGDN - Golden Sample\nSTD - Standard Sample\nFAI1 - First Article Sample (EB)\nPFAI - In-process FA Sample\nLMT - Limit Sample\nOQC - OQC Retained Sample\nEXS - Experimental Sample (TPR)\nMAT - Mating Part Sample (External)\nFGS - Final Product Sample (External)\nQTS - Quotation Sample (External)"
+  },
+  {
+   "depends_on": "requires_sample",
+   "fieldname": "reference_sample",
+   "fieldtype": "Link",
+   "label": "Reference Sample",
+   "options": "Sample Manager"
   },
   {
    "fieldname": "column_break_frequency",
@@ -135,6 +144,13 @@
    "fieldname": "patrol_interval_mins",
    "fieldtype": "Int",
    "label": "Patrol Interval (Minutes)"
+  },
+  {
+   "default": "0",
+   "description": "Maximum allowed NG sample rate for automatic release. 0 means any NG sample rejects the inspection.",
+   "fieldname": "max_defect_rate",
+   "fieldtype": "Percent",
+   "label": "Max Defect Rate"
   },
   {
    "fieldname": "remarks",

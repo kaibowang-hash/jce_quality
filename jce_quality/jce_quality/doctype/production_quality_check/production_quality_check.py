@@ -6,6 +6,7 @@ from jce_quality.services.quality import (
 	inspect_and_set_status,
 	load_template_readings,
 	populate_check_from_scheduling,
+	prepare_check_for_terminal,
 	sync_scheduling_item_quality_status,
 	validate_sample_reference,
 )
@@ -13,24 +14,33 @@ from jce_quality.services.quality import (
 
 class ProductionQualityCheck(Document):
 	def before_insert(self):
+		if not self.inspected_by or self.inspected_by == "user":
+			self.inspected_by = frappe.session.user if frappe.session.user != "Guest" else "Administrator"
 		populate_check_from_scheduling(self)
 		load_template_readings(self)
+		prepare_check_for_terminal(self)
 
 	def validate(self):
 		populate_check_from_scheduling(self)
+		prepare_check_for_terminal(self)
 		if self.sample_manager:
 			validate_sample_reference(self)
 		self.set_defect_details()
 		self.set_photo_details()
+		if self.docstatus == 0 and self.get("sample_readings"):
+			inspect_and_set_status(self, require_values=False)
 
 		if self.docstatus == 0 and self.status not in ("In Progress", "Draft"):
 			self.status = "Draft"
 
 	def before_submit(self):
+		prepare_check_for_terminal(self)
 		validate_sample_reference(self)
 		inspect_and_set_status(self, require_values=True)
 		self.inspection_finished_at = self.inspection_finished_at or now_datetime()
 		self.status = self.overall_status
+		if self.quality_node == "Patrol" and self.overall_status == "Rejected":
+			self.defect_confirmation_status = "Pending"
 
 	def on_submit(self):
 		sync_scheduling_item_quality_status(self.scheduling_item)

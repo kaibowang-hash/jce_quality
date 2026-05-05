@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 from collections import defaultdict
+from contextlib import contextmanager
 
 import frappe
 from frappe import _
@@ -11,9 +13,20 @@ from erpnext.stock.doctype.quality_inspection_template.quality_inspection_templa
 	get_template_details,
 )
 
+from jce_quality.services.template_baseline import apply_template_to_check
+
 
 QUALITY_NODES = ("First Article", "Patrol", "Last Article", "Final Release")
+READING_TEMPLATE_METADATA_FIELDS = ("inspection_method", "inspection_standard")
 PASSING_STATUSES = ("Accepted", "Concession Released")
+TEMPORARY_CONTINUE_DISPOSITION = "Temporary Continue"
+DISPOSITION_OPTIONS = (
+	TEMPORARY_CONTINUE_DISPOSITION,
+	"Stop Production",
+	"Rework",
+	"Scrap",
+	"Concession Release",
+)
 SCHEDULING_ITEM_STATUS_FIELDS = {
 	"First Article": "jce_quality_first_article_status",
 	"Last Article": "jce_quality_last_article_status",
@@ -61,6 +74,7 @@ def populate_check_from_scheduling(doc):
 	doc.mold = get_work_order_mold(doc.work_order)
 
 	apply_rule_to_check(doc)
+	apply_template_to_check(doc)
 
 
 def apply_rule_to_check(doc):
@@ -77,6 +91,7 @@ def apply_rule_to_check(doc):
 		doc.quality_inspection_template = doc.quality_inspection_template or rule.quality_inspection_template
 		doc.requires_sample = cint(rule.requires_sample)
 		doc.required_sample_type = rule.required_sample_type
+		doc.sample_manager = doc.sample_manager or rule.get("reference_sample")
 	else:
 		doc.requires_sample = 1
 		doc.quality_inspection_template = doc.quality_inspection_template or (
@@ -175,8 +190,10 @@ def get_enabled_quality_rules(quality_node: str | None = None):
 			"is_mandatory",
 			"requires_sample",
 			"required_sample_type",
+			"reference_sample",
 			"minimum_patrol_count",
 			"patrol_interval_mins",
+			"max_defect_rate",
 			"modified",
 		],
 		order_by="modified desc, name desc",
@@ -195,6 +212,27 @@ def get_item_group_map(item_codes):
 	}
 
 
+def get_item_customer_code_map(item_codes):
+	item_codes = sorted(set(filter(None, item_codes or [])))
+	if not item_codes:
+		return {}
+	meta = frappe.get_meta("Item")
+	fields = ["name"]
+	for fieldname in ("customer_code", "custom_客户料号"):
+		if meta.has_field(fieldname):
+			fields.append(fieldname)
+	if len(fields) == 1:
+		return {}
+	return {
+		row.name: clean_customer_code(row)
+		for row in frappe.get_all("Item", filters={"name": ("in", item_codes)}, fields=fields)
+	}
+
+
+def clean_customer_code(row) -> str:
+	return (row.get("customer_code") or row.get("custom_客户料号") or "").strip()
+
+
 def get_quality_requirements(scheduling_doc, row, item_group=None, rules_by_node: dict | None = None):
 	requirements = {}
 	for node in QUALITY_NODES:
@@ -207,23 +245,32 @@ def get_quality_requirements(scheduling_doc, row, item_group=None, rules_by_node
 			quality_node=node,
 			rules=(rules_by_node or {}).get(node),
 		)
-		requirements[node] = get_required_check_count(rule, node)
+		requirements[node] = get_required_check_count(rule, node, scheduling_row=row)
 	return requirements
 
 
-def get_required_check_count(rule, node: str) -> int:
+def get_required_check_count(rule, node: str, scheduling_row=None) -> int:
 	if rule and not cint(rule.is_mandatory):
 		return 0
 
 	if node == "Patrol":
 		required_count = cint(rule.minimum_patrol_count) if rule else 1
-		return required_count if required_count > 0 else 1
+		required_count = required_count if required_count > 0 else 1
+		return required_count + get_extra_patrol_count(scheduling_row)
 
 	return 1
 
 
+def get_extra_patrol_count(scheduling_row=None) -> int:
+	if not scheduling_row:
+		return 0
+	return max(cint(getattr(scheduling_row, "jce_quality_extra_patrol_count", 0)), 0)
+
+
 def summary_meets_requirements(summary: dict, requirements: dict) -> bool:
 	if summary.get("frozen"):
+		return False
+	if summary.get("active_ng_checks"):
 		return False
 	if requirements.get("First Article") and summary.get("first_article_status") not in PASSING_STATUSES:
 		return False
@@ -242,6 +289,7 @@ def load_template_readings(doc, force: bool = False):
 	if doc.get("readings") and not force:
 		return
 
+	template_metadata = get_template_parameter_metadata(doc.quality_inspection_template)
 	doc.set("readings", [])
 	for parameter in get_template_details(doc.quality_inspection_template):
 		child = doc.append("readings", {})
@@ -250,6 +298,128 @@ def load_template_readings(doc, force: bool = False):
 		child.parameter_group = frappe.db.get_value(
 			"Quality Inspection Parameter", parameter.specification, "parameter_group"
 		)
+		for fieldname, value in template_metadata.get(parameter.specification, {}).items():
+			if child.meta.has_field(fieldname):
+				child.set(fieldname, value)
+
+
+def get_template_parameter_metadata(template_name: str | None) -> dict[str, dict]:
+	if not template_name or not frappe.db.exists("Quality Inspection Template", template_name):
+		return {}
+	template = frappe.get_doc("Quality Inspection Template", template_name)
+	rows = {}
+	for row in template.get("item_quality_inspection_parameter", []):
+		if not row.get("specification"):
+			continue
+		values = {
+			fieldname: row.get(fieldname)
+			for fieldname in READING_TEMPLATE_METADATA_FIELDS
+			if row.meta.has_field(fieldname) and row.get(fieldname)
+		}
+		if values:
+			rows[row.specification] = values
+	return rows
+
+
+def sync_reading_template_metadata(doc) -> bool:
+	if not doc.get("quality_inspection_template") or not doc.get("readings"):
+		return False
+	template_metadata = get_template_parameter_metadata(doc.quality_inspection_template)
+	if not template_metadata:
+		return False
+	changed = False
+	for reading in doc.get("readings", []):
+		for fieldname, value in template_metadata.get(reading.specification, {}).items():
+			if reading.meta.has_field(fieldname) and not reading.get(fieldname):
+				reading.set(fieldname, value)
+				changed = True
+	return changed
+
+
+def prepare_check_for_terminal(doc, persist: bool = False):
+	initial = {
+		"quality_inspection_template": doc.get("quality_inspection_template"),
+		"template_version": doc.get("template_version"),
+		"template_af_reference": doc.get("template_af_reference"),
+		"drawing_file": doc.get("drawing_file"),
+		"template_warning": doc.get("template_warning"),
+		"readings": len(doc.get("readings") or []),
+		"inspection_stage": doc.get("inspection_stage"),
+		"inspection_sample_qty": cint(doc.get("inspection_sample_qty")),
+	}
+	apply_template_to_check(doc)
+	if not doc.docstatus:
+		load_template_readings(doc)
+		apply_sample_plan_to_check(doc)
+	metadata_changed = sync_reading_template_metadata(doc)
+
+	changed = any(
+		initial.get(fieldname) != (
+			len(doc.get("readings") or []) if fieldname == "readings" else doc.get(fieldname)
+		)
+		for fieldname in initial
+	) or metadata_changed
+	if persist and changed and not doc.docstatus:
+		doc.flags.ignore_permissions = True
+		doc.save(ignore_permissions=True)
+	return doc
+
+
+def get_template_sample_plan(template_name: str | None, quality_node: str | None = None) -> list[dict]:
+	if not template_name or not frappe.db.exists("Quality Inspection Template", template_name):
+		return []
+	if not frappe.get_meta("Quality Inspection Template").has_field("sample_plan"):
+		return []
+	template = frappe.get_doc("Quality Inspection Template", template_name)
+	rows = []
+	for row in template.get("sample_plan", []):
+		if quality_node and row.quality_node and row.quality_node != quality_node:
+			continue
+		rows.append(
+			{
+				"quality_node": row.quality_node,
+				"stage_label": row.stage_label or row.quality_node or _("Default"),
+				"min_sample_qty": max(cint(row.min_sample_qty), 1),
+			}
+		)
+	return rows
+
+
+def apply_sample_plan_to_check(doc) -> bool:
+	if not doc.meta.has_field("inspection_sample_qty"):
+		return False
+	plans = get_template_sample_plan(doc.get("quality_inspection_template"), doc.get("quality_node"))
+	current_stage = doc.get("inspection_stage")
+	selected = None
+	if current_stage:
+		selected = next((row for row in plans if row.get("stage_label") == current_stage), None)
+	selected = selected or (plans[0] if plans else None)
+	stage = selected.get("stage_label") if selected else (current_stage or doc.get("quality_node") or _("Default"))
+	min_qty = max(cint(selected.get("min_sample_qty")) if selected else 1, 1)
+	current_qty = cint(doc.get("inspection_sample_qty"))
+	changed = False
+	if doc.meta.has_field("inspection_stage") and not current_stage and stage:
+		doc.inspection_stage = stage
+		changed = True
+	if current_qty < min_qty:
+		doc.inspection_sample_qty = min_qty
+		changed = True
+	return changed
+
+
+def get_rule_max_defect_rate(doc) -> float:
+	if doc.get("production_quality_rule") and frappe.db.exists("Production Quality Rule", doc.production_quality_rule):
+		if frappe.get_meta("Production Quality Rule").has_field("max_defect_rate"):
+			return max(flt(frappe.db.get_value("Production Quality Rule", doc.production_quality_rule, "max_defect_rate")), 0)
+	rule = get_applicable_rule(
+		company=doc.get("company"),
+		plant_floor=doc.get("plant_floor"),
+		workstation=doc.get("workstation"),
+		item_code=doc.get("item_code"),
+		item_group=doc.get("item_group"),
+		quality_node=doc.get("quality_node"),
+	)
+	return max(flt(rule.get("max_defect_rate")) if rule else 0, 0)
 
 
 def validate_sample_reference(doc):
@@ -257,10 +427,10 @@ def validate_sample_reference(doc):
 		return
 
 	if not frappe.db.exists("DocType", "Sample Manager"):
-		frappe.throw(_("Sample Manager DocType is required before submitting this quality check."))
+		frappe.throw(_("Reference Sample DocType is required before submitting this quality check."))
 
 	if not doc.sample_manager:
-		frappe.throw(_("Sample Manager is mandatory for {0}.").format(_(doc.quality_node)))
+		frappe.throw(_("Reference Sample is mandatory for {0}.").format(_(doc.quality_node)))
 
 	sample = frappe.get_doc("Sample Manager", doc.sample_manager)
 	if sample.status != "Active":
@@ -292,10 +462,9 @@ def validate_sample_reference(doc):
 
 
 def inspect_and_set_status(doc, require_values: bool = False):
-	if cint(doc.manual_inspection):
-		if require_values and doc.overall_status not in ("Accepted", "Rejected"):
-			frappe.throw(_("Manual Result must be Accepted or Rejected before submit."))
-		return doc.overall_status == "Accepted"
+	if doc.meta.has_field("sample_readings") and doc.get("sample_readings"):
+		system_passed = inspect_sample_readings(doc, require_values=require_values)
+		return apply_manual_override(doc, system_passed, require_values=inspect_has_required_values(require_values))
 
 	rejected = False
 	accepted_or_manual = False
@@ -323,15 +492,156 @@ def inspect_and_set_status(doc, require_values: bool = False):
 		accepted_or_manual = accepted_or_manual or result
 		rejected = rejected or not result
 
-	if doc.get("readings"):
-		doc.overall_status = "Rejected" if rejected else "Accepted"
+	if doc.get("readings") and accepted_or_manual:
+		system_status = "Rejected" if rejected else "Accepted"
+		set_if_has_field(doc, "system_overall_status", system_status)
+		if not cint(doc.manual_inspection):
+			doc.overall_status = system_status
 	elif require_values:
 		if not cint(doc.manual_inspection):
 			frappe.throw(_("Readings are required unless Manual Result is checked."))
 		if doc.overall_status not in ("Accepted", "Rejected"):
 			frappe.throw(_("Manual Result must be Accepted or Rejected before submit."))
 
-	return accepted_or_manual and not rejected
+	return apply_manual_override(doc, accepted_or_manual and not rejected, require_values=inspect_has_required_values(require_values))
+
+
+def inspect_has_required_values(require_values: bool) -> bool:
+	return bool(require_values)
+
+
+def apply_manual_override(doc, system_passed: bool, require_values: bool = False):
+	if not cint(doc.manual_inspection):
+		return system_passed
+	if require_values and doc.overall_status not in ("Accepted", "Rejected"):
+		frappe.throw(_("Manual Result must be Accepted or Rejected before submit."))
+	if (
+		require_values
+		and doc.get("system_overall_status")
+		and doc.overall_status in ("Accepted", "Rejected")
+		and doc.overall_status != doc.system_overall_status
+		and not (doc.get("remarks") or "").strip()
+	):
+		frappe.throw(_("Operator Note is required when manually overriding the system result."))
+	return doc.overall_status == "Accepted"
+
+
+def inspect_sample_readings(doc, require_values: bool = False):
+	sync_sample_reading_criteria(doc)
+	sample_qty = max(cint(doc.get("inspection_sample_qty")), max([cint(row.sample_no) for row in doc.get("sample_readings", [])] or [0]), 1)
+	expected_specs = {row.specification for row in doc.get("readings", []) if row.specification}
+	if require_values and not expected_specs:
+		frappe.throw(_("Readings are required unless Manual Result is checked."))
+
+	by_sample = defaultdict(dict)
+	any_value = False
+	for row in doc.get("sample_readings", []):
+		if not row.sample_no or not row.specification:
+			continue
+		value = row.get("reading_value")
+		has_value = value is not None and str(value).strip()
+		if has_value:
+			any_value = True
+			passed = sample_reading_passed(row)
+			row.status = "Accepted" if passed else "Rejected"
+		elif require_values:
+			frappe.throw(
+				_("Sample #{0} {1}: Reading Value is mandatory.").format(row.sample_no, row.specification)
+			)
+		else:
+			row.status = ""
+		by_sample[cint(row.sample_no)][row.specification] = row
+
+	if require_values:
+		for sample_no in range(1, sample_qty + 1):
+			missing = expected_specs - set(by_sample.get(sample_no, {}).keys())
+			if missing:
+				frappe.throw(
+					_("Sample #{0}: missing reading for {1}.").format(sample_no, ", ".join(sorted(missing)))
+				)
+
+	def sample_failed(sample_no):
+		rows = by_sample.get(sample_no, {}).values()
+		return any(row.status == "Rejected" for row in rows)
+
+	def sample_has_value(sample_no):
+		rows = by_sample.get(sample_no, {}).values()
+		return any(str(row.get("reading_value") or "").strip() for row in rows)
+
+	evaluated_samples = [sample_no for sample_no in range(1, sample_qty + 1) if sample_has_value(sample_no)]
+	if require_values:
+		evaluated_samples = list(range(1, sample_qty + 1))
+	defect_sample_qty = sum(1 for sample_no in evaluated_samples if sample_failed(sample_no))
+	denominator = sample_qty if require_values else len(evaluated_samples)
+	defect_rate = (defect_sample_qty / denominator * 100) if denominator else 0
+	max_defect_rate = get_rule_max_defect_rate(doc)
+	system_status = "Rejected" if denominator and defect_rate > max_defect_rate else "Accepted"
+	if not any_value and not require_values:
+		system_status = "Pending"
+
+	set_if_has_field(doc, "inspection_sample_qty", sample_qty)
+	set_if_has_field(doc, "defect_sample_qty", defect_sample_qty)
+	set_if_has_field(doc, "defect_rate", defect_rate)
+	set_if_has_field(doc, "system_overall_status", system_status)
+	if system_status != "Pending":
+		for reading in doc.get("readings", []):
+			rows = [
+				row for row in doc.get("sample_readings", [])
+				if row.specification == reading.specification and row.status
+			]
+			if rows:
+				reading.status = "Rejected" if any(row.status == "Rejected" for row in rows) else "Accepted"
+		if not cint(doc.manual_inspection):
+			doc.overall_status = system_status
+	return system_status == "Accepted"
+
+
+def sync_sample_reading_criteria(doc):
+	readings_by_idx = {cint(row.idx): row for row in doc.get("readings", [])}
+	readings_by_spec = {row.specification: row for row in doc.get("readings", []) if row.specification}
+	for row in doc.get("sample_readings", []):
+		source = readings_by_idx.get(cint(row.source_reading_idx)) or readings_by_spec.get(row.specification)
+		if not source:
+			continue
+		row.source_reading_idx = source.idx
+		for fieldname in (
+			"specification",
+			"parameter_group",
+			"inspection_method",
+			"inspection_standard",
+			"value",
+			"numeric",
+			"min_value",
+			"max_value",
+			"formula_based_criteria",
+			"acceptance_formula",
+		):
+			if row.meta.has_field(fieldname):
+				row.set(fieldname, source.get(fieldname))
+
+
+def sample_reading_passed(row):
+	value = row.get("reading_value")
+	if cint(row.get("formula_based_criteria")):
+		return sample_formula_criteria_passed(row, value)
+	if not cint(row.get("numeric")):
+		return (value or "") == (row.get("value") or "")
+	return flt(row.get("min_value")) <= parse_float(str(value)) <= flt(row.get("max_value"))
+
+
+def sample_formula_criteria_passed(row, value):
+	if not row.acceptance_formula:
+		frappe.throw(_("Sample #{0} {1}: Acceptance Criteria Formula is required.").format(row.sample_no, row.specification))
+	parsed = parse_float(str(value)) if value is not None and str(value).strip() else 0.0
+	data = {"reading_value": value, "mean": parsed}
+	for idx in range(1, 11):
+		data[f"reading_{idx}"] = parsed if idx == 1 else 0.0
+	return bool(frappe.safe_eval(row.acceptance_formula, None, data))
+
+
+def set_if_has_field(doc, fieldname, value):
+	if doc.meta.has_field(fieldname):
+		doc.set(fieldname, value)
 
 
 def _min_max_criteria_passed(reading, require_values: bool = False):
@@ -367,6 +677,21 @@ def _formula_criteria_passed(reading):
 	return bool(frappe.safe_eval(reading.acceptance_formula, None, data))
 
 
+@contextmanager
+def quality_check_creation_lock(scheduling_item: str, node: str):
+	lock_name = "jce_qc:" + hashlib.sha1(f"{scheduling_item}:{node}".encode()).hexdigest()
+	acquired = False
+	try:
+		result = frappe.db.sql("select get_lock(%s, %s)", (lock_name, 10))
+		acquired = bool(result and cint(result[0][0]))
+		if not acquired:
+			frappe.throw(_("Could not lock quality check creation. Please retry."))
+		yield
+	finally:
+		if acquired:
+			frappe.db.sql("select release_lock(%s)", (lock_name,))
+
+
 def make_quality_checks(work_order_scheduling: str, scheduling_item: str | None = None, nodes: list[str] | None = None):
 	doc = get_scheduling_doc(work_order_scheduling)
 	nodes = nodes or list(QUALITY_NODES)
@@ -380,22 +705,23 @@ def make_quality_checks(work_order_scheduling: str, scheduling_item: str | None 
 		for node in nodes:
 			if node not in QUALITY_NODES:
 				continue
-			missing_count = get_missing_check_count(
-				doc,
-				row,
-				node,
-				item_group=item_group_map.get(row.item_code),
-				rules_by_node=rules_by_node,
-			)
-			for _idx in range(missing_count):
-				check = frappe.new_doc("Production Quality Check")
-				check.quality_node = node
-				check.work_order_scheduling = doc.name
-				check.scheduling_item = row.name
-				populate_check_from_scheduling(check)
-				load_template_readings(check)
-				check.insert(ignore_permissions=True)
-				created.append(check.name)
+			with quality_check_creation_lock(row.name, node):
+				missing_count = get_missing_check_count(
+					doc,
+					row,
+					node,
+					item_group=item_group_map.get(row.item_code),
+					rules_by_node=rules_by_node,
+				)
+				for _idx in range(missing_count):
+					check = frappe.new_doc("Production Quality Check")
+					check.quality_node = node
+					check.work_order_scheduling = doc.name
+					check.scheduling_item = row.name
+					populate_check_from_scheduling(check)
+					load_template_readings(check)
+					check.insert(ignore_permissions=True)
+					created.append(check.name)
 
 	return created
 
@@ -410,20 +736,56 @@ def get_missing_check_count(scheduling_doc, scheduling_row, node: str, item_grou
 		quality_node=node,
 		rules=(rules_by_node or {}).get(node),
 	)
-	required_count = get_required_check_count(rule, node)
+	required_count = get_required_check_count(rule, node, scheduling_row=scheduling_row)
 	if not required_count:
 		return 0
 
-	existing = frappe.db.count(
+	existing_checks = frappe.get_all(
 		"Production Quality Check",
-		{
+		filters={
 			"work_order_scheduling": scheduling_doc.name,
 			"scheduling_item": scheduling_row.name,
 			"quality_node": node,
 			"docstatus": ("<", 2),
 		},
+		fields=["docstatus", "overall_status"],
+	)
+	existing = sum(
+		1
+		for check in existing_checks
+		if cint(check.docstatus) == 0 or (cint(check.docstatus) == 1 and check.overall_status in PASSING_STATUSES)
 	)
 	return max(required_count - existing, 0)
+
+
+def is_production_blocking_ng(check) -> bool:
+	return (
+		cint(check.get("docstatus")) == 1
+		and check.get("overall_status") == "Rejected"
+		and check.get("disposition") != TEMPORARY_CONTINUE_DISPOSITION
+	)
+
+
+def is_temporary_continue_ng(check) -> bool:
+	return (
+		cint(check.get("docstatus")) == 1
+		and check.get("overall_status") == "Rejected"
+		and check.get("disposition") == TEMPORARY_CONTINUE_DISPOSITION
+	)
+
+
+def get_ng_disposition_state(check) -> str:
+	if check.get("overall_status") == "Concession Released":
+		return "Concession Released"
+	if check.get("disposition") == TEMPORARY_CONTINUE_DISPOSITION:
+		return "Temporary Continue"
+	if check.get("disposition") == "Concession Release":
+		return "Pending Concession Approval"
+	if check.get("disposition") in ("Stop Production", "Rework", "Scrap"):
+		return check.get("disposition")
+	if check.get("overall_status") == "Rejected":
+		return "Pending Disposition"
+	return check.get("overall_status") or "Pending"
 
 
 def get_scheduling_item_quality_summary(scheduling_item: str):
@@ -439,7 +801,22 @@ def get_scheduling_items_quality_summary(scheduling_items: list[str]):
 	checks = frappe.get_all(
 		"Production Quality Check",
 		filters={"scheduling_item": ("in", scheduling_items), "docstatus": ("<", 2)},
-		fields=["name", "scheduling_item", "quality_node", "overall_status", "status", "docstatus", "modified"],
+		fields=[
+			"name",
+			"scheduling_item",
+			"quality_node",
+			"overall_status",
+			"status",
+			"docstatus",
+			"disposition",
+			"disposition_remarks",
+			"disposition_by",
+			"disposition_at",
+			"release_approved",
+			"release_approved_by",
+			"release_approved_at",
+			"modified",
+		],
 		order_by="scheduling_item asc, modified desc",
 	)
 
@@ -448,7 +825,27 @@ def get_scheduling_items_quality_summary(scheduling_items: list[str]):
 		if not summary["latest_check"]:
 			summary["latest_check"] = check.name
 		if check.docstatus == 1 and check.overall_status == "Rejected":
-			summary["frozen"] = True
+			ng_entry = {
+				"name": check.name,
+				"quality_node": check.quality_node,
+				"disposition": check.disposition,
+				"disposition_state": get_ng_disposition_state(check),
+				"disposition_remarks": check.disposition_remarks,
+				"disposition_by": check.disposition_by,
+				"disposition_at": check.disposition_at,
+				"release_approved": cint(check.release_approved),
+				"release_approved_by": check.release_approved_by,
+				"release_approved_at": check.release_approved_at,
+				"production_blocking": is_production_blocking_ng(check),
+				"modified": check.modified,
+			}
+			summary["active_ng_checks"].append(ng_entry)
+			if is_production_blocking_ng(check):
+				summary["frozen"] = True
+			if is_production_blocking_ng(check):
+				summary["_rejected_by_node"][check.quality_node] = "Rejected"
+			elif check.quality_node not in summary["_rejected_by_node"]:
+				summary["_rejected_by_node"][check.quality_node] = TEMPORARY_CONTINUE_DISPOSITION
 		if check.quality_node == "Patrol" and check.docstatus == 1 and check.overall_status in PASSING_STATUSES:
 			summary["patrol_count"] += 1
 		if check.quality_node not in summary["_latest_by_node"]:
@@ -456,9 +853,11 @@ def get_scheduling_items_quality_summary(scheduling_items: list[str]):
 
 	for summary in summaries.values():
 		latest_by_node = summary.pop("_latest_by_node", {})
-		summary["first_article_status"] = latest_by_node.get("First Article", "Pending")
-		summary["last_article_status"] = latest_by_node.get("Last Article", "Pending")
-		summary["final_release_status"] = latest_by_node.get("Final Release", "Pending")
+		rejected_by_node = summary.pop("_rejected_by_node", {})
+		summary["first_article_status"] = rejected_by_node.get("First Article") or latest_by_node.get("First Article", "Pending")
+		summary["patrol_status"] = rejected_by_node.get("Patrol") or latest_by_node.get("Patrol", "Pending")
+		summary["last_article_status"] = rejected_by_node.get("Last Article") or latest_by_node.get("Last Article", "Pending")
+		summary["final_release_status"] = rejected_by_node.get("Final Release") or latest_by_node.get("Final Release", "Pending")
 
 	return summaries
 
@@ -468,10 +867,13 @@ def _empty_quality_summary():
 		"latest_check": None,
 		"frozen": False,
 		"patrol_count": 0,
+		"active_ng_checks": [],
 		"first_article_status": "Pending",
+		"patrol_status": "Pending",
 		"last_article_status": "Pending",
 		"final_release_status": "Pending",
 		"_latest_by_node": {},
+		"_rejected_by_node": {},
 	}
 
 
@@ -495,6 +897,20 @@ def sync_scheduling_item_quality_status(scheduling_item: str | None):
 
 
 def validate_quality_gate_for_scheduling(work_order_scheduling: str):
+	messages = get_quality_gate_messages_for_scheduling(work_order_scheduling)
+	if messages:
+		frappe.throw("<br>".join(messages), title=_("Quality Gate Not Passed"))
+
+
+def get_quality_gate_messages_for_scheduling(work_order_scheduling: str):
+	return _get_quality_gate_messages_for_scheduling(work_order_scheduling)
+
+
+def _get_quality_gate_messages_for_scheduling(
+	work_order_scheduling: str,
+	bypass_doc=None,
+	used_bypass_names: set[str] | None = None,
+):
 	doc = get_scheduling_doc(work_order_scheduling)
 	messages = []
 	item_group_map = get_item_group_map([row.item_code for row in doc.scheduling_items])
@@ -507,18 +923,22 @@ def validate_quality_gate_for_scheduling(work_order_scheduling: str):
 	for row in doc.scheduling_items:
 		if not (flt(row.get("completed_qty")) or flt(row.get("defect_qty"))):
 			continue
-		messages.extend(
-			validate_quality_gate_for_row(
-				doc,
-				row,
-				item_group=item_group_map.get(row.item_code),
-				rules_by_node=rules_by_node,
-				checks_by_row_node=checks_by_row_node,
-			)
+		row_messages = validate_quality_gate_for_row(
+			doc,
+			row,
+			item_group=item_group_map.get(row.item_code),
+			rules_by_node=rules_by_node,
+			checks_by_row_node=checks_by_row_node,
 		)
+		if row_messages and bypass_doc and not has_rejected_quality_blocker_for_row(row.name):
+			bypass_names = get_quality_gate_bypass_names_for_row(bypass_doc, doc, row)
+			if bypass_names:
+				if used_bypass_names is not None:
+					used_bypass_names.update(bypass_names)
+				continue
+		messages.extend(row_messages)
 
-	if messages:
-		frappe.throw("<br>".join(messages), title=_("Quality Gate Not Passed"))
+	return messages
 
 
 def validate_quality_gate_for_row(
@@ -539,7 +959,7 @@ def validate_quality_gate_for_row(
 			quality_node=node,
 			rules=(rules_by_node or {}).get(node),
 		)
-		required_count = get_required_check_count(rule, node)
+		required_count = get_required_check_count(rule, node, scheduling_row=row)
 		if not required_count:
 			continue
 
@@ -604,9 +1024,182 @@ def validate_stock_entry_quality_gate(doc, method=None):
 	if doc.purpose != "Manufacture":
 		return
 
-	work_order_scheduling = doc.get("work_order_scheduling") or doc.get("custom_work_order_scheduling")
+	work_order_schedulings = get_stock_entry_work_order_schedulings(doc)
+	if not work_order_schedulings:
+		return
+
+	messages = []
+	used_bypass_names = set()
+	for work_order_scheduling in work_order_schedulings:
+		scheduling_messages = _get_quality_gate_messages_for_scheduling(
+			work_order_scheduling,
+			bypass_doc=doc,
+			used_bypass_names=used_bypass_names,
+		)
+		if not scheduling_messages:
+			continue
+		messages.extend(scheduling_messages)
+
+	for name in used_bypass_names:
+		frappe.db.set_value("Quality Gate Bypass", name, "status", "Used", update_modified=True)
+
+	if not messages:
+		return
+	frappe.throw("<br>".join(messages), title=_("Quality Gate Not Passed"))
+
+
+def get_stock_entry_work_order_schedulings(doc) -> list[str]:
+	schedules = []
+	for fieldname in ("work_order_scheduling", "custom_work_order_scheduling"):
+		value = doc.get(fieldname)
+		if value:
+			schedules.append(value)
+
+	work_orders = []
+	if doc.get("work_order"):
+		work_orders.append(doc.work_order)
+	for row in doc.get("items", []):
+		if row.get("work_order"):
+			work_orders.append(row.work_order)
+
+	work_orders = list(dict.fromkeys(filter(None, work_orders)))
+	if work_orders:
+		work_order_meta = frappe.get_meta("Work Order")
+		for fieldname in ("work_order_scheduling", "custom_work_order_scheduling"):
+			if work_order_meta.has_field(fieldname):
+				schedules.extend(
+					frappe.get_all(
+						"Work Order",
+						filters={"name": ("in", work_orders)},
+						pluck=fieldname,
+					)
+				)
+		if frappe.db.exists("DocType", "Scheduling Item"):
+			schedules.extend(
+				frappe.get_all(
+					"Scheduling Item",
+					filters={"work_order": ("in", work_orders)},
+					pluck="parent",
+					limit_page_length=100,
+				)
+			)
+
+	return list(dict.fromkeys(filter(None, schedules)))
+
+
+def has_rejected_quality_blocker(work_order_scheduling: str) -> bool:
+	rows = frappe.get_all("Scheduling Item", filters={"parent": work_order_scheduling}, pluck="name")
+	if not rows:
+		return False
+	return any(has_rejected_quality_blocker_for_row(row_name) for row_name in rows)
+
+
+def has_rejected_quality_blocker_for_row(scheduling_item: str) -> bool:
+	return bool(
+		frappe.db.exists(
+			"Production Quality Check",
+			{
+				"scheduling_item": scheduling_item,
+				"docstatus": 1,
+				"overall_status": "Rejected",
+			},
+		)
+	)
+
+
+def has_approved_quality_gate_bypass(doc, work_order_scheduling: str | None = None) -> bool:
+	if not frappe.db.exists("DocType", "Quality Gate Bypass"):
+		return False
+	if frappe.db.exists(
+		"Quality Gate Bypass",
+		{
+			"status": "Approved",
+			"reference_doctype": "Stock Entry",
+			"reference_name": doc.name,
+			"company": doc.get("company"),
+		},
+	):
+		return True
+	if not work_order_scheduling:
+		return False
+	scheduling = get_scheduling_doc(work_order_scheduling)
+	return any(get_quality_gate_bypass_names_for_row(doc, scheduling, row) for row in scheduling.get("scheduling_items", []))
+
+
+def mark_quality_gate_bypass_used(doc, work_order_scheduling: str | None = None):
+	if not frappe.db.exists("DocType", "Quality Gate Bypass"):
+		return
+	names = set()
+	names.update(
+		frappe.get_all(
+			"Quality Gate Bypass",
+			filters={
+				"status": "Approved",
+				"reference_doctype": "Stock Entry",
+				"reference_name": doc.name,
+			},
+			pluck="name",
+		)
+	)
 	if work_order_scheduling:
-		validate_quality_gate_for_scheduling(work_order_scheduling)
+		scheduling = get_scheduling_doc(work_order_scheduling)
+		for row in scheduling.get("scheduling_items", []):
+			names.update(get_quality_gate_bypass_names_for_row(doc, scheduling, row))
+	for name in names:
+		frappe.db.set_value("Quality Gate Bypass", name, "status", "Used", update_modified=True)
+
+
+def get_quality_gate_bypass_names_for_row(stock_entry, scheduling_doc, row) -> list[str]:
+	if not frappe.db.exists("DocType", "Quality Gate Bypass"):
+		return []
+	company = stock_entry.get("company")
+	names = set(
+		frappe.get_all(
+			"Quality Gate Bypass",
+			filters={
+				"status": "Approved",
+				"reference_doctype": "Stock Entry",
+				"reference_name": stock_entry.name,
+				"company": company,
+			},
+			pluck="name",
+		)
+	)
+	if not stock_entry_contains_item(stock_entry, row.get("item_code")):
+		return sorted(names)
+
+	candidates = frappe.get_all(
+		"Quality Gate Bypass",
+		filters={"status": "Approved", "company": company},
+		fields=[
+			"name",
+			"reference_doctype",
+			"reference_name",
+			"work_order_scheduling",
+			"scheduling_item",
+			"item_code",
+			"qty",
+		],
+		limit_page_length=100,
+	)
+	for bypass in candidates:
+		references_schedule = bypass.work_order_scheduling == scheduling_doc.name or (
+			bypass.reference_doctype == "Work Order Scheduling" and bypass.reference_name == scheduling_doc.name
+		)
+		if not references_schedule:
+			continue
+		if bypass.scheduling_item and bypass.scheduling_item == row.name:
+			names.add(bypass.name)
+			continue
+		if bypass.item_code and bypass.item_code == row.get("item_code") and flt(bypass.qty) > 0:
+			names.add(bypass.name)
+	return sorted(names)
+
+
+def stock_entry_contains_item(stock_entry, item_code: str | None) -> bool:
+	if not item_code:
+		return False
+	return any(row.get("item_code") == item_code for row in stock_entry.get("items", []))
 
 
 def get_work_order_scheduling_summary(work_order_scheduling: str):
@@ -647,7 +1240,7 @@ def get_patrol_task_info(scheduling_doc, row, summary: dict, rule=_UNSET, latest
 			quality_node="Patrol",
 		)
 
-	required_count = get_required_check_count(rule, "Patrol")
+	required_count = get_required_check_count(rule, "Patrol", scheduling_row=row)
 	interval_mins = cint(rule.patrol_interval_mins) if rule and required_count else 0
 	if latest_patrol_at is _UNSET:
 		latest_patrol_at = frappe.db.get_value(
@@ -732,10 +1325,7 @@ def get_terminal_tasks(posting_date=None, plant_floor=None, shift_type=None, wor
 
 	schedule_map = {schedule.name: schedule for schedule in schedules}
 	schedule_names = list(schedule_map)
-	rows = frappe.get_all(
-		"Scheduling Item",
-		filters={"parent": ("in", schedule_names)},
-		fields=[
+	scheduling_item_fields = [
 			"name",
 			"parent",
 			"idx",
@@ -748,12 +1338,28 @@ def get_terminal_tasks(posting_date=None, plant_floor=None, shift_type=None, wor
 			"workstation",
 			"from_time",
 			"to_time",
-		],
+	]
+	scheduling_item_meta = frappe.get_meta("Scheduling Item")
+	for fieldname in (
+		"jce_quality_alert_open",
+		"jce_quality_alert_source_check",
+		"jce_quality_alert_note",
+		"jce_quality_extra_patrol_count",
+		"jce_quality_extra_patrol_source_check",
+	):
+		if scheduling_item_meta.has_field(fieldname):
+			scheduling_item_fields.append(fieldname)
+
+	rows = frappe.get_all(
+		"Scheduling Item",
+		filters={"parent": ("in", schedule_names)},
+		fields=scheduling_item_fields,
 		order_by="parent asc, idx asc",
 	)
 	summaries = get_scheduling_items_quality_summary([row.name for row in rows])
 	latest_patrol_map = get_latest_accepted_patrol_map([row.name for row in rows])
 	item_group_map = get_item_group_map([row.item_code for row in rows])
+	item_customer_code_map = get_item_customer_code_map([row.item_code for row in rows])
 	rules_by_node = {node: get_enabled_quality_rules(node) for node in QUALITY_NODES}
 
 	tasks = []
@@ -792,6 +1398,12 @@ def get_terminal_tasks(posting_date=None, plant_floor=None, shift_type=None, wor
 				"last_article_required": requirements.get("Last Article", 0),
 				"final_release_required": requirements.get("Final Release", 0),
 				"quality_complete": summary_meets_requirements(summary, requirements),
+				"quality_alert_open": cint(row.get("jce_quality_alert_open")),
+				"quality_alert_source_check": row.get("jce_quality_alert_source_check"),
+				"quality_alert_note": row.get("jce_quality_alert_note"),
+				"extra_patrol_count": cint(row.get("jce_quality_extra_patrol_count")),
+				"extra_patrol_source_check": row.get("jce_quality_extra_patrol_source_check"),
+				"customer_code": item_customer_code_map.get(row.item_code),
 			}
 		)
 
@@ -833,9 +1445,11 @@ def get_board_data(posting_date=None, plant_floor=None, shift_type=None):
 
 
 def mark_disposition(doc, disposition: str, remarks: str | None = None):
+	if doc.docstatus != 1:
+		frappe.throw(_("Disposition can only be recorded after the quality check is submitted."))
 	if doc.overall_status != "Rejected":
 		frappe.throw(_("Disposition is only required for rejected checks."))
-	if disposition not in ("Rework", "Scrap", "Concession Release"):
+	if disposition not in DISPOSITION_OPTIONS:
 		frappe.throw(_("Invalid disposition {0}.").format(disposition))
 
 	doc.db_set("disposition", disposition, update_modified=False)
@@ -846,8 +1460,8 @@ def mark_disposition(doc, disposition: str, remarks: str | None = None):
 
 
 def approve_concession_release(doc):
-	if "Quality Manager" not in frappe.get_roles():
-		frappe.throw(_("Only Quality Manager can approve concession release."))
+	if doc.docstatus != 1:
+		frappe.throw(_("Concession release can only be approved after the quality check is submitted."))
 	if doc.overall_status != "Rejected" or doc.disposition != "Concession Release":
 		frappe.throw(_("Only rejected checks with Concession Release disposition can be approved."))
 
@@ -912,8 +1526,11 @@ def get_quality_analytics_data(filters=None):
 			"modified",
 		],
 		order_by="posting_date asc, modified desc",
-		limit_page_length=1000,
+		limit_page_length=1001,
 	)
+	checks_truncated = len(checks) > 1000
+	if checks_truncated:
+		checks = checks[:1000]
 	check_names = [row.name for row in checks]
 	defects = []
 	if check_names:
@@ -922,8 +1539,11 @@ def get_quality_analytics_data(filters=None):
 			filters={"parenttype": "Production Quality Check", "parent": ("in", check_names)},
 			fields=["parent", "defect_code", "defect_name", "category", "severity", "quantity", "remarks"],
 			order_by="idx asc",
-			limit_page_length=5000,
+			limit_page_length=5001,
 		)
+	defects_truncated = len(defects) > 5000
+	if defects_truncated:
+		defects = defects[:5000]
 
 	defects_by_parent = defaultdict(list)
 	for defect in defects:
@@ -992,6 +1612,7 @@ def get_quality_analytics_data(filters=None):
 		"by_dimension": dimension_rows[:20],
 		"defect_ranking": defect_rows[:20],
 		"details": details[:200],
+		"truncated": {"checks": checks_truncated, "defects": defects_truncated},
 	}
 
 
