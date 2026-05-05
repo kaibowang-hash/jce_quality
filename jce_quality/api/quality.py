@@ -18,6 +18,7 @@ from jce_quality.services.quality import (
 	get_rule_max_defect_rate,
 	validate_quality_gate_for_scheduling,
 	is_production_blocking_ng,
+	get_patrol_history_context,
 )
 from jce_quality.services.dmr import confirm_ipqc_defect as confirm_ipqc_defect_doc
 from jce_quality.services.template_baseline import get_template_payload
@@ -112,7 +113,12 @@ def get_or_create_check(work_order_scheduling, scheduling_item, quality_node):
 	if existing:
 		return get_check_payload(existing[0])
 
-	created = make_quality_checks(work_order_scheduling, scheduling_item=scheduling_item, nodes=[quality_node])
+	created = make_quality_checks(
+		work_order_scheduling,
+		scheduling_item=scheduling_item,
+		nodes=[quality_node],
+		limit_per_node=1,
+	)
 	if not created:
 		existing = frappe.get_all(
 			"Production Quality Check",
@@ -150,6 +156,8 @@ def get_check_payload(check_name):
 	payload["patrol_increase_blocked"] = bool(payload.get("extra_patrol_source_check") == doc.name)
 	payload["defect_summary"] = build_defect_summary(doc)
 	payload["related_defect_alerts"] = get_related_defect_alerts(doc)
+	if doc.get("quality_node") == "Patrol":
+		payload.update(build_patrol_history_payload(doc))
 	payload["terminal_permissions"] = {
 		"can_temporary_continue": has_terminal_action_access("Temporary Continue") or has_quality_disposition_access(),
 		"can_disposition": has_quality_disposition_access(),
@@ -423,6 +431,27 @@ def get_scheduling_alert_payload(scheduling_item: str | None) -> dict:
 		if meta.has_field(source):
 			fields[target] = frappe.db.get_value("Scheduling Item", scheduling_item, source)
 	return fields
+
+
+def build_patrol_history_payload(doc) -> dict:
+	context = get_patrol_history_context(doc)
+	history = []
+	for row in context.get("patrol_history") or []:
+		item = dict(row)
+		try:
+			history_doc = frappe.get_doc("Production Quality Check", row.name)
+			if not history_doc.has_permission("read"):
+				continue
+			item["defect_summary"] = build_defect_summary(history_doc)
+		except Exception:
+			item["defect_summary"] = ""
+		history.append(item)
+	return {
+		"patrol_history": history,
+		"patrol_sequence_no": next((row.get("sequence_no") for row in history if row.get("name") == doc.name), 0),
+		"patrol_required_count": context.get("patrol_required_count") or 0,
+		"patrol_accepted_count": context.get("patrol_accepted_count") or 0,
+	}
 
 
 def get_item_customer_code(item_code: str | None) -> str:
