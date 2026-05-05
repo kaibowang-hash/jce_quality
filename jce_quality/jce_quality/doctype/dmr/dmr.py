@@ -18,18 +18,7 @@ class DMR(Document):
 				self.uom = self.uom or item.stock_uom
 		self.validate_type_fields()
 		self.validate_reinspection_results()
-		if self.defect_code:
-			defect = frappe.db.get_value(
-				"Quality Defect Code",
-				self.defect_code,
-				["defect_name", "severity", "disabled"],
-				as_dict=True,
-			)
-			if defect:
-				if defect.disabled:
-					frappe.throw(_("Defect Code {0} is disabled.").format(self.defect_code))
-				self.defect_description = self.defect_description or defect.defect_name
-				self.severity = self.severity or defect.severity
+		self.sync_defects()
 
 	@frappe.whitelist()
 	def make_customer_exchange_stock_entry(self):
@@ -87,6 +76,41 @@ class DMR(Document):
 			self.return_rejection_status = "Pending"
 		elif not self.requires_return_rejection and not self.return_rejection_status:
 			self.return_rejection_status = "Not Required"
+
+	def sync_defects(self):
+		legacy_defect_code = self.get("defect_code")
+		legacy_description = self.get("defect_description")
+		legacy_severity = self.get("severity")
+		if legacy_defect_code and not self.get("defects"):
+			self.append(
+				"defects",
+				{
+					"defect_code": legacy_defect_code,
+					"quantity": self.qty or 1,
+					"description": legacy_description,
+					"severity": legacy_severity,
+				},
+			)
+
+		for row in self.get("defects", []):
+			if not row.defect_code:
+				continue
+			defect = frappe.db.get_value(
+				"Quality Defect Code",
+				row.defect_code,
+				["defect_name", "category", "severity", "description", "disabled"],
+				as_dict=True,
+			)
+			if not defect:
+				continue
+			if defect.disabled:
+				frappe.throw(_("Defect Code {0} is disabled.").format(row.defect_code))
+			row.defect_name = defect.defect_name
+			row.category = defect.category
+			row.severity = row.severity or defect.severity
+			row.description = row.description or defect.description
+			if not flt(row.quantity):
+				row.quantity = 1
 
 	def set_default_source_doctype(self):
 		if self.dmr_type and not self.source_doctype:

@@ -20,6 +20,7 @@ frappe.pages["quality-inspection-terminal"].on_page_hide = function (wrapper) {
 const DRAWING_WIDTH_KEY = "jce_quality_terminal_drawing_width";
 const PDFJS_SRC = "/assets/jce_quality/vendor/pdfjs/pdf.min.js";
 const PDFJS_WORKER = "/assets/jce_quality/vendor/pdfjs/pdf.worker.min.js";
+const PRODUCTION_QUALITY_NODES = ["First Article", "Patrol", "Last Article", "Final Release"];
 
 class QualityInspectionTerminal {
 	constructor(page, wrapper) {
@@ -143,6 +144,16 @@ class QualityInspectionTerminal {
 						${this.fullscreen_toolbar_button()}
 					</div>
 				</section>
+				<section class="jce-q-entry-panel">
+					<button type="button" class="jce-q-entry-action ipqc" data-action="manual-check">
+						<span class="jce-q-entry-icon">${icon_html("plus")}</span>
+						<span class="jce-q-entry-copy"><b>IPQC</b><em>${__("Manual Production Check")}</em></span>
+					</button>
+					<button type="button" class="jce-q-entry-action oqc" data-action="oqc-check">
+						<span class="jce-q-entry-icon">${icon_html("truck")}</span>
+						<span class="jce-q-entry-copy"><b>OQC</b><em>${__("Shipping Inspection")}</em></span>
+					</button>
+				</section>
 				<section class="jce-q-filter-panel">
 					<div class="jce-q-filter-title">${__("Filters")}</div>
 					<div class="jce-q-toolbar"></div>
@@ -154,6 +165,8 @@ class QualityInspectionTerminal {
 		this.update_fullscreen_class(true);
 		this.body.find('[data-action="fullscreen"]').on("click", () => this.toggle_fullscreen());
 		this.body.find('[data-action="dismiss-pwa-hint"]').on("click", () => this.dismiss_pwa_hint());
+		this.body.find('[data-action="manual-check"]').on("click", () => this.open_manual_check_dialog());
+		this.body.find('[data-action="oqc-check"]').on("click", () => this.open_oqc_dialog());
 		this.render_filters();
 		this.render_tasks();
 	}
@@ -185,7 +198,7 @@ class QualityInspectionTerminal {
 				<button class="jce-q-small-button primary icon jce-q-filter-refresh" title="${__("Refresh")}" aria-label="${__("Refresh")}">${icon_html("refresh-cw")}</button>
 			</div>`)
 			.appendTo(toolbar)
-			.find("button")
+			.find(".jce-q-filter-refresh")
 			.on("click", () => this.refresh());
 	}
 
@@ -242,24 +255,23 @@ class QualityInspectionTerminal {
 				: patrol_complete
 					? "Accepted"
 					: `${cint(task.patrol_count)} / ${cint(task.patrol_required_count)}`;
-		const first_article_status = cint(task.first_article_required) ? task.first_article_status : "Not Required";
-		const last_article_status = cint(task.last_article_required) ? task.last_article_status : "Not Required";
-		const final_release_status = cint(task.final_release_required) ? task.final_release_status : "Not Required";
+		const node_buttons = this.render_task_node_buttons(task, patrol_status);
 		const alert_note = task.quality_alert_note
 			? `<div class="jce-q-task-alert">${esc(task.quality_alert_note)}</div>`
 			: "";
 		const complete_pill = cint(task.quality_complete)
 			? `<span class="jce-q-pill ok">${__("Complete")}</span>`
 			: `<span class="jce-q-pill">${__("Open")}</span>`;
+		const fai_pill = cint(task.first_article_required) ? `<span class="jce-q-pill fai">FAI</span>` : "";
 		const alert_pill = cint(task.quality_alert_open)
 			? `<span class="jce-q-pill danger">${__("Alert")}</span>`
 			: "";
 
 		return `
-			<div class="jce-q-task">
+			<div class="jce-q-task ${cint(task.first_article_required) ? "has-fai" : ""}">
 				<div class="jce-q-task-card-head">
 					<span class="jce-q-station">${esc(task.workstation || "-")}</span>
-					<div class="jce-q-task-badges">${complete_pill}${alert_pill}${frozen}${temporary_continue}</div>
+					<div class="jce-q-task-badges">${fai_pill}${complete_pill}${alert_pill}${frozen}${temporary_continue}</div>
 				</div>
 				<div class="jce-q-task-title">
 					<div>
@@ -277,13 +289,38 @@ class QualityInspectionTerminal {
 					<div><span>${__("Extra Patrol")}</span><b>${cint(task.extra_patrol_count) || "-"}</b></div>
 				</div>
 				<div class="jce-q-node-row">
-					${this.node_button("First Article", first_article_status)}
-					${this.node_button("Patrol", patrol_status)}
-					${this.node_button("Last Article", last_article_status)}
-					${this.node_button("Final Release", final_release_status)}
+					${node_buttons || `<div class="jce-q-muted">${__("No mandatory quality tasks.")}</div>`}
 				</div>
 			</div>
 		`;
+	}
+
+	render_task_node_buttons(task, patrol_status) {
+		return this.get_required_nodes(task)
+			.map((node) => this.node_button(node, this.get_task_node_status(task, node, patrol_status)))
+			.join("");
+	}
+
+	get_required_nodes(task) {
+		if (Array.isArray(task?.required_quality_nodes) && task.required_quality_nodes.length) {
+			return task.required_quality_nodes.filter((node) => PRODUCTION_QUALITY_NODES.includes(node));
+		}
+		const requirements = task?.quality_requirements || {};
+		return PRODUCTION_QUALITY_NODES.filter((node) => {
+			if (node === "Patrol") return cint(requirements[node]) || cint(task?.patrol_required_count);
+			if (node === "First Article") return cint(requirements[node]) || cint(task?.first_article_required);
+			if (node === "Last Article") return cint(requirements[node]) || cint(task?.last_article_required);
+			if (node === "Final Release") return cint(requirements[node]) || cint(task?.final_release_required);
+			return false;
+		});
+	}
+
+	get_task_node_status(task, node, patrol_status) {
+		if (node === "Patrol") return patrol_status;
+		if (node === "First Article") return task.first_article_status || "Pending";
+		if (node === "Last Article") return task.last_article_status || "Pending";
+		if (node === "Final Release") return task.final_release_status || "Pending";
+		return "Pending";
 	}
 
 	render_task_ng_followups(task) {
@@ -312,6 +349,10 @@ class QualityInspectionTerminal {
 	}
 
 	open_check(task, node) {
+		if (!this.get_required_nodes(task).includes(node)) {
+			frappe.show_alert({ message: __("{0} is not required for this scheduling item.", [__(node)]), indicator: "orange" });
+			return;
+		}
 		frappe.call({
 			method: "jce_quality.api.quality.get_or_create_check",
 			args: {
@@ -346,6 +387,212 @@ class QualityInspectionTerminal {
 			console.error(error);
 			frappe.show_alert({ message: __("Unable to open inspection."), indicator: "red" });
 		});
+	}
+
+	open_manual_check_dialog() {
+		const d = new frappe.ui.Dialog({
+			title: __("IPQC Manual Production Check"),
+			fields: [
+				{ fieldname: "item_code", fieldtype: "Link", options: "Item", label: __("Item Code"), reqd: 1 },
+				{ fieldname: "workstation", fieldtype: "Link", options: "Workstation", label: __("Workstation"), reqd: 1 },
+				{ fieldname: "company", fieldtype: "Link", options: "Company", label: __("Company") },
+				{ fieldname: "plant_floor", fieldtype: "Link", options: "Plant Floor", label: __("Plant Floor"), default: this.filters.plant_floor },
+				{ fieldname: "quality_node", fieldtype: "Select", label: __("Quality Node"), options: "\n", reqd: 1 },
+				{ fieldname: "node_options_html", fieldtype: "HTML" },
+				{ fieldname: "qty", fieldtype: "Float", label: __("Qty"), default: 1 },
+				{ fieldname: "shift_type", fieldtype: "Data", label: __("Shift"), default: this.filters.shift_type },
+				{ fieldname: "posting_date", fieldtype: "Date", label: __("Date"), default: this.filters.posting_date || frappe.datetime.get_today() },
+				{ fieldname: "remarks", fieldtype: "Small Text", label: __("Remarks") },
+			],
+			primary_action_label: __("Create"),
+			primary_action: (values) => {
+				if (!values.quality_node) {
+					frappe.msgprint(__("No mandatory IPQC gate is available for this item and workstation."));
+					return;
+				}
+				frappe.call({
+					method: "jce_quality.api.quality.create_manual_production_check",
+					args: values,
+					freeze: true,
+					freeze_message: __("Creating inspection..."),
+				}).then((r) => {
+					d.hide();
+					this.selectedTask = null;
+					this.current = r.message;
+					this.enter_focus_mode();
+				});
+			},
+		});
+		d.show();
+		const refresh_options = () => this.refresh_manual_node_options(d);
+		["item_code", "workstation", "company", "plant_floor"].forEach((fieldname) => {
+			d.get_field(fieldname)?.$input?.on("change", refresh_options);
+		});
+		this.refresh_manual_node_options(d);
+	}
+
+	refresh_manual_node_options(d) {
+		const item_code = d.get_value("item_code");
+		const workstation = d.get_value("workstation");
+		const field = d.get_field("quality_node");
+		const holder = d.get_field("node_options_html")?.$wrapper;
+		if (!field) return Promise.resolve();
+		if (!item_code || !workstation) {
+			field.df.options = "\n";
+			field.refresh();
+			d.set_value("quality_node", "");
+			holder?.html(`<div class="jce-q-empty compact">${__("Select item and workstation.")}</div>`);
+			return Promise.resolve();
+		}
+		holder?.html(`<div class="jce-q-empty compact">${__("Loading mandatory IPQC gates...")}</div>`);
+		return frappe.call({
+			method: "jce_quality.api.quality.get_manual_production_quality_node_options",
+			args: {
+				item_code,
+				workstation,
+				company: d.get_value("company"),
+				plant_floor: d.get_value("plant_floor"),
+			},
+		}).then((r) => {
+			const options = r.message || [];
+			field.df.options = `\n${options.map((row) => row.value).join("\n")}`;
+			field.refresh();
+			const current = d.get_value("quality_node");
+			if (!options.some((row) => row.value === current)) {
+				d.set_value("quality_node", options[0]?.value || "");
+			}
+			holder?.html(this.render_manual_node_options(options));
+		});
+	}
+
+	render_manual_node_options(options) {
+		if (!options.length) {
+			return `<div class="jce-q-empty compact">${__("No mandatory IPQC gate is configured.")}</div>`;
+		}
+		return `
+			<div class="jce-q-manual-node-list">
+				${options.map((row) => `
+					<span class="jce-q-node-chip">
+						<b>${esc(quality_process_label(row.value))}</b>
+						<em>${row.required_count > 1 ? esc(__("{0} checks", [row.required_count])) : esc(__("Required"))}</em>
+					</span>
+				`).join("")}
+			</div>
+		`;
+	}
+
+	open_oqc_dialog() {
+		const can_use_delivery_plan = frappe.model.can_read("Delivery Plan");
+		const fields = [
+			{ fieldname: "source_type", fieldtype: "Select", label: __("Source"), options: can_use_delivery_plan ? "Delivery Note\nDelivery Plan" : "Delivery Note", default: "Delivery Note" },
+			{ fieldname: "delivery_note", fieldtype: "Link", options: "Delivery Note", label: __("Delivery Note") },
+		];
+		if (can_use_delivery_plan) {
+			fields.push({ fieldname: "delivery_plan", fieldtype: "Link", options: "Delivery Plan", label: __("Delivery Plan"), depends_on: "eval:doc.source_type=='Delivery Plan'" });
+		}
+		fields.push({ fieldname: "items_html", fieldtype: "HTML" });
+		const d = new frappe.ui.Dialog({
+			title: __("OQC Shipping Inspection"),
+			size: "large",
+			fields,
+			primary_action_label: __("Load"),
+			primary_action: () => this.load_oqc_dialog_items(d),
+		});
+		d.show();
+		d.get_field("delivery_note").$input.on("change", () => this.load_oqc_dialog_items(d));
+		d.get_field("delivery_plan")?.$input.on("change", () => this.load_oqc_dialog_items(d));
+	}
+
+	load_oqc_dialog_items(d) {
+		if (d.get_value("source_type") === "Delivery Plan") {
+			const delivery_plan = d.get_value("delivery_plan");
+			if (!delivery_plan) return;
+			const holder = d.get_field("items_html").$wrapper;
+			holder.html(`<div class="jce-q-empty compact">${__("Loading...")}</div>`);
+			return frappe.call({
+				method: "jce_quality.api.quality.get_delivery_plan_delivery_notes",
+				args: { delivery_plan },
+			}).then((r) => {
+				const rows = r.message || [];
+				holder.html(this.render_delivery_plan_notes(rows));
+				holder.find("[data-delivery-note]").on("click", (event) => {
+					d.set_value("source_type", "Delivery Note");
+					d.set_value("delivery_note", event.currentTarget.dataset.deliveryNote);
+					this.load_oqc_dialog_items(d);
+				});
+			});
+		}
+		const delivery_note = d.get_value("delivery_note");
+		if (!delivery_note) return;
+		const holder = d.get_field("items_html").$wrapper;
+		holder.html(`<div class="jce-q-empty compact">${__("Loading...")}</div>`);
+		return frappe.call({
+			method: "jce_quality.api.quality.get_delivery_oqc_items",
+			args: { delivery_note },
+		}).then((r) => {
+			const rows = r.message || [];
+			holder.html(this.render_oqc_items(rows));
+			holder.find("[data-oqc-open]").on("click", (event) => {
+				const button = $(event.currentTarget);
+				frappe.call({
+					method: "jce_quality.api.quality.get_or_create_delivery_oqc_check",
+					args: {
+						delivery_note,
+						item_code: button.data("itemCode"),
+						warehouse: button.data("warehouse") || "",
+						uom: button.data("uom") || "",
+					},
+					freeze: true,
+					freeze_message: __("Opening OQC..."),
+				}).then((response) => {
+					d.hide();
+					this.selectedTask = null;
+					this.current = response.message;
+					this.enter_focus_mode();
+				});
+			});
+		});
+	}
+
+	render_delivery_plan_notes(rows) {
+		if (!rows.length) return `<div class="jce-q-empty compact">${__("No Delivery Notes linked to this Delivery Plan.")}</div>`;
+		return `
+			<div class="jce-q-oqc-list">
+				${rows.map((row) => `
+					<div class="jce-q-oqc-row">
+						<div>
+							<b>${esc(row.name || "")}</b>
+							<span>${esc(row.customer || "")}</span>
+							<em>${esc(row.posting_date || "-")} · ${esc(row.status || "")}</em>
+						</div>
+						<button class="jce-q-small-button primary" data-delivery-note="${esc(row.name)}">${__("Use Delivery Note")}</button>
+					</div>
+				`).join("")}
+			</div>
+		`;
+	}
+
+	render_oqc_items(rows) {
+		if (!rows.length) return `<div class="jce-q-empty compact">${__("No Delivery Note items found.")}</div>`;
+		return `
+			<div class="jce-q-oqc-list">
+				${rows.map((row) => `
+					<div class="jce-q-oqc-row">
+						<div>
+							<b>${esc(row.item_code || "")}</b>
+							<span>${esc(row.item_name || "")}</span>
+							<em>${esc(row.warehouse || "-")} · ${esc(row.uom || "-")} · ${format_float(row.qty || 0)}</em>
+						</div>
+						<div>
+							<span class="jce-q-pill">${esc(inspection_status_label(row.overall_status || "Pending"))}</span>
+							<button class="jce-q-small-button primary" data-oqc-open="1" data-item-code="${esc(row.item_code || "")}" data-warehouse="${esc(row.warehouse || "")}" data-uom="${esc(row.uom || "")}">
+								${row.check_name ? __("Open") : __("Create")}
+							</button>
+						</div>
+					</div>
+				`).join("")}
+			</div>
+		`;
 	}
 
 	switch_patrol_history(direction) {
@@ -510,6 +757,7 @@ class QualityInspectionTerminal {
 			${this.render_quick_actions(doc)}
 			${this.render_patrol_navigator(doc)}
 			${this.render_ng_disposition_panel(doc)}
+			${this.render_oqc_release_panel(doc)}
 			${this.render_related_alerts(doc)}
 			<section class="jce-q-panel">
 				<div class="jce-q-section-head">
@@ -823,6 +1071,50 @@ class QualityInspectionTerminal {
 		return `<div class="jce-q-disposition-actions">${buttons.join("")}</div>`;
 	}
 
+	render_oqc_release_panel(doc) {
+		if (doc.source_type !== "Delivery Note OQC") return "";
+		const status = doc.release_status || "Pending";
+		const permissions = doc.terminal_permissions || {};
+		const submitted = cint(doc.docstatus) === 1;
+		const passing = ["Accepted", "Concession Released"].includes(doc.overall_status);
+		const rejected = doc.overall_status === "Rejected";
+		const buttons = [];
+		if (submitted && passing && permissions.can_oqc_release) {
+			buttons.push(`<button class="jce-q-bar-button primary" data-action="oqc-release" data-release-status="Released">${__("Release")}</button>`);
+		}
+		if (submitted && passing && permissions.can_oqc_temporary_release) {
+			buttons.push(`<button class="jce-q-bar-button warn" data-action="oqc-release" data-release-status="Temporary Released">${__("Temporary Release")}</button>`);
+		}
+		if (submitted && rejected && permissions.can_oqc_block) {
+			buttons.push(`<button class="jce-q-bar-button danger" data-action="oqc-release" data-release-status="Blocked">${__("Block")}</button>`);
+		}
+		const help = !submitted
+			? __("Submit the OQC check before release.")
+			: rejected
+				? __("Rejected OQC can be blocked or escalated by an authorized user.")
+				: passing
+					? __("Waiting for an authorized user to release OQC.")
+					: __("OQC release is available after accepted inspection.");
+		return `
+			<section class="jce-q-panel jce-q-disposition-panel">
+				<div class="jce-q-section-head">
+					<div>
+						<span>${__("OQC Release")}</span>
+						<b>${esc(oqc_release_status_label(status))}</b>
+					</div>
+					<span class="jce-q-pill ${status === "Released" ? "ok" : status === "Blocked" ? "danger" : "warn"}">${esc(oqc_release_status_label(status))}</span>
+				</div>
+				<div class="jce-q-info-grid">
+					${this.render_info_item(__("Delivery Note"), doc.source_name || "-")}
+					${this.render_info_item(__("Source Detail"), doc.source_detail || "-")}
+					${this.render_info_item(__("Escalated DMR"), doc.escalated_dmr || "-")}
+				</div>
+				${doc.temporary_release_note ? `<div class="jce-q-disposition-note"><span>${__("Temporary Release Note")}</span><b>${esc(doc.temporary_release_note)}</b></div>` : ""}
+				${buttons.length ? `<div class="jce-q-disposition-actions">${buttons.join("")}</div>` : `<div class="jce-q-disposition-help">${help}</div>`}
+			</section>
+		`;
+	}
+
 	render_pdf_viewer(doc) {
 		const drawing = this.get_drawing_url(doc);
 		if (!drawing) {
@@ -906,6 +1198,7 @@ class QualityInspectionTerminal {
 		shell.find('[data-action="hide-drawing"]').on("click", () => this.hide_drawing());
 		shell.find('[data-action="set-disposition"]').on("click", (event) => this.open_disposition_sheet(event.currentTarget.dataset.disposition));
 		shell.find('[data-action="approve-concession"]').on("click", () => this.approve_concession_release());
+		shell.find('[data-action="oqc-release"]').on("click", (event) => this.open_oqc_release_sheet(event.currentTarget.dataset.releaseStatus));
 		shell.find('[data-action="add-note"]').on("click", () => this.open_note_sheet());
 		shell.find('[data-action="patrol-prev"]').on("click", () => this.switch_patrol_history(-1));
 		shell.find('[data-action="patrol-next"]').on("click", () => this.switch_patrol_history(1));
@@ -950,6 +1243,54 @@ class QualityInspectionTerminal {
 					this.close_terminal_sheet();
 					this.create_dmr_from_current();
 				}
+			},
+		});
+	}
+
+	open_oqc_release_sheet(release_status) {
+		if (!this.current || !release_status) return;
+		const permissions = this.current.terminal_permissions || {};
+		const show_note = release_status === "Temporary Released" || this.current.temporary_release_note;
+		const show_dmr = this.current.overall_status === "Rejected" && cint(this.current.docstatus) && permissions.can_oqc_escalate_to_dmr;
+		this.open_terminal_sheet({
+			title: __(release_status),
+			body: `
+				${show_note ? `
+					<label class="jce-q-sheet-field">
+						<span>${__("Temporary Release Note")}</span>
+						<textarea data-sheet-field="temporary_release_note">${esc(this.current.temporary_release_note || "")}</textarea>
+					</label>
+				` : ""}
+				${show_dmr ? `
+					<label class="jce-q-switch">
+						<input type="checkbox" data-sheet-field="escalate_to_dmr">
+						<span></span>
+						<b>${__("Escalate to DMR")}</b>
+					</label>
+				` : ""}
+			`,
+				primary_label: __("Save"),
+				on_primary: async (sheet) => {
+					const temporary_release_note = sheet.find('[data-sheet-field="temporary_release_note"]').val();
+					const args = {
+						check_name: this.current.name,
+						release_status,
+						escalate_to_dmr: sheet.find('[data-sheet-field="escalate_to_dmr"]').is(":checked") ? 1 : 0,
+					};
+					if (temporary_release_note !== undefined) {
+						args.temporary_release_note = temporary_release_note;
+					}
+					const r = await frappe.call({
+						method: "jce_quality.api.quality.release_oqc_check",
+						args,
+						freeze: true,
+						freeze_message: __("Saving OQC release..."),
+					});
+					this.current.release_status = r.message?.release_status || release_status;
+					this.current.escalated_dmr = r.message?.dmr || this.current.escalated_dmr;
+					this.current.temporary_release_note = temporary_release_note || this.current.temporary_release_note;
+				this.close_terminal_sheet();
+				this.render_focus_shell();
 			},
 		});
 	}
@@ -1188,6 +1529,7 @@ class QualityInspectionTerminal {
 			const row = holder.closest(".jce-q-defect-row");
 			const hidden = row.find('[data-field="defect_code"]');
 			const value = holder.data("value") || hidden.val() || "";
+			const description = row.find(".jce-q-defect-description");
 			const control = frappe.ui.form.make_control({
 				parent: holder,
 				df: {
@@ -1202,9 +1544,26 @@ class QualityInspectionTerminal {
 			});
 			control.set_value(value);
 			hidden.val(value);
-			control.$input?.on("change input blur awesomplete-selectcomplete", () => hidden.val(control.get_value() || control.$input.val() || ""));
+			const sync_description = () => {
+				const code = control.get_value() || control.$input.val() || "";
+				hidden.val(code);
+				description.html(this.render_defect_description(code));
+			};
+			sync_description();
+			control.$input?.on("change input blur awesomplete-selectcomplete", sync_description);
 			holder.data("control", control);
 		});
+	}
+
+	render_defect_description(defect_code) {
+		const row = this.get_defect_option(defect_code);
+		const text = row?.description || row?.defect_name || "";
+		return text ? `<span>${esc(text)}</span>` : "";
+	}
+
+	get_defect_option(defect_code) {
+		if (!defect_code) return null;
+		return (this.defect_options || []).find((row) => row.defect_code === defect_code || row.name === defect_code);
 	}
 
 	render_task_drawer() {
@@ -1493,6 +1852,7 @@ class QualityInspectionTerminal {
 				<div class="jce-q-field jce-q-defect-code-field">
 					<div class="jce-q-defect-control" data-value="${esc(row.defect_code || "")}"></div>
 					<input type="hidden" data-field="defect_code" value="${esc(row.defect_code || "")}">
+					<div class="jce-q-defect-description">${this.render_defect_description(row.defect_code) || (row.description ? `<span>${esc(row.description)}</span>` : "")}</div>
 				</div>
 				<label class="jce-q-field">
 					<span>${__("Quantity")}</span>
@@ -1806,7 +2166,7 @@ class QualityInspectionTerminal {
 	attach_photo() {
 		if (!window.isSecureContext) {
 			frappe.msgprint({
-				title: __("Camera Permission"),
+				title: __("Camera is not available"),
 				message: __("Camera access requires HTTPS or a secure local context on Apple devices."),
 				indicator: "orange",
 			});
@@ -1816,17 +2176,7 @@ class QualityInspectionTerminal {
 			this.open_camera_file_fallback();
 			return;
 		}
-		this.open_terminal_sheet({
-			title: __("Camera Permission"),
-			body: `
-				<div class="jce-q-dialog-summary">${esc(__("The browser will ask for camera access. Allow it to take inspection photos with a watermark."))}</div>
-			`,
-			primary_label: __("Continue"),
-			on_primary: async () => {
-				this.close_terminal_sheet();
-				this.open_camera_capture_dialog();
-			},
-		});
+		this.open_camera_capture_dialog();
 	}
 
 	open_camera_file_fallback() {
@@ -1838,7 +2188,7 @@ class QualityInspectionTerminal {
 				return;
 			}
 			try {
-				const caption = this.get_photo_watermark_lines(this.current).join(" / ");
+				const caption = "";
 				const filename = file.name || `${this.current.name}_${format_filename_datetime(new Date())}.jpg`;
 				const file_url = await this.upload_photo_file(file, filename);
 				const payload = this.collect_payload();
@@ -1871,9 +2221,12 @@ class QualityInspectionTerminal {
 		const doc = this.current;
 		let stream = null;
 		let captured = false;
-		let captured_caption = "";
 		let current_device_id = "";
 		let device_list = [];
+		let base_image_data = null;
+		let annotation_tool = "rect";
+		let annotation_shapes = [];
+		let active_shape = null;
 		const d = new frappe.ui.Dialog({
 			title: __("Capture Photo"),
 			size: "large",
@@ -1891,7 +2244,7 @@ class QualityInspectionTerminal {
 				try {
 					d.get_primary_btn().prop("disabled", true);
 					const canvas = d.$wrapper.find(".jce-q-camera-canvas").get(0);
-					const caption = captured_caption || this.get_photo_watermark_lines(doc).join(" / ");
+					const caption = "";
 					const file_url = await this.upload_captured_canvas(canvas);
 					const payload = this.collect_payload();
 					payload.defect_photos.push({ image: file_url, caption });
@@ -1925,22 +2278,31 @@ class QualityInspectionTerminal {
 		d.get_primary_btn().prop("disabled", true);
 		const $camera = d.get_field("camera_area").$wrapper;
 		$camera.html(`
-			<div class="jce-q-camera-wrap">
-				<div class="jce-q-camera-stage">
-					<video class="jce-q-camera-video" autoplay playsinline muted></video>
-					<canvas class="jce-q-camera-canvas" hidden></canvas>
-					<div class="jce-q-camera-badge">${esc(this.get_photo_watermark_lines(doc).join(" · "))}</div>
-					<button type="button" class="jce-q-camera-shot" data-camera-action="capture" title="${__("Capture Photo")}" aria-label="${__("Capture Photo")}">${icon_html("camera")}</button>
-					<button type="button" class="jce-q-camera-retake" data-camera-action="retake" title="${__("Retake")}" aria-label="${__("Retake")}" hidden>${icon_html("rotate-ccw")}</button>
-				</div>
+				<div class="jce-q-camera-wrap">
+					<div class="jce-q-camera-stage">
+						<video class="jce-q-camera-video" autoplay playsinline muted></video>
+						<canvas class="jce-q-camera-canvas" hidden></canvas>
+						<canvas class="jce-q-annotation-canvas" hidden></canvas>
+						<div class="jce-q-camera-badge">${esc(this.get_photo_watermark_lines(doc).join(" · "))}</div>
+						<button type="button" class="jce-q-camera-shot" data-camera-action="capture" title="${__("Capture Photo")}" aria-label="${__("Capture Photo")}">${icon_html("camera")}</button>
+						<button type="button" class="jce-q-camera-retake" data-camera-action="retake" title="${__("Retake")}" aria-label="${__("Retake")}" hidden>${icon_html("rotate-ccw")}</button>
+					</div>
+					<div class="jce-q-camera-tools" hidden>
+						<button type="button" class="jce-q-small-button active" data-annotation-tool="rect">${icon_html("square")}</button>
+						<button type="button" class="jce-q-small-button" data-annotation-tool="circle">${icon_html("circle")}</button>
+						<button type="button" class="jce-q-small-button" data-camera-action="undo">${icon_html("undo-2")}</button>
+						<button type="button" class="jce-q-small-button" data-camera-action="clear">${icon_html("trash-2")}</button>
+					</div>
 				<div class="jce-q-camera-hint">${__("The photo will be saved with an inspection watermark in the lower right corner.")}</div>
 			</div>
 		`);
 
 		const video = $camera.find(".jce-q-camera-video").get(0);
 		const canvas = $camera.find(".jce-q-camera-canvas").get(0);
+		const annotation_canvas = $camera.find(".jce-q-annotation-canvas").get(0);
 		const $shot = $camera.find('[data-camera-action="capture"]');
 		const $retake = $camera.find('[data-camera-action="retake"]');
+		const $tools = $camera.find(".jce-q-camera-tools");
 		const device_field = d.get_field("camera_device");
 		device_field.$wrapper.hide();
 
@@ -1978,12 +2340,32 @@ class QualityInspectionTerminal {
 		};
 		const set_captured = (enabled) => {
 			captured = enabled;
-			if (!enabled) captured_caption = "";
+			if (!enabled) {
+				base_image_data = null;
+				annotation_shapes = [];
+				active_shape = null;
+				clear_annotation_overlay(annotation_canvas);
+			}
 			d.get_primary_btn().prop("disabled", !enabled);
 			$(video).prop("hidden", enabled);
 			$(canvas).prop("hidden", !enabled);
+			$(annotation_canvas).prop("hidden", !enabled);
 			$shot.prop("hidden", enabled);
 			$retake.prop("hidden", !enabled);
+			$tools.prop("hidden", !enabled);
+		};
+		const redraw_final = () => {
+			if (!base_image_data) return;
+			const ctx = canvas.getContext("2d");
+			ctx.putImageData(base_image_data, 0, 0);
+			annotation_shapes.forEach((shape) => draw_photo_annotation(ctx, shape, canvas.width, canvas.height));
+		};
+		const get_canvas_point = (event) => {
+			const rect = canvas.getBoundingClientRect();
+			return {
+				x: clamp((event.clientX - rect.left) / rect.width, 0, 1),
+				y: clamp((event.clientY - rect.top) / rect.height, 0, 1),
+			};
 		};
 
 		$shot.on("click", () => {
@@ -1992,14 +2374,47 @@ class QualityInspectionTerminal {
 				return;
 			}
 			const watermark = this.get_photo_watermark_lines(doc);
-			captured_caption = watermark.join(" / ");
 			render_inspection_photo(video, canvas, {
 				mirror: !!d.get_value("mirror"),
 				watermark,
 			});
+			base_image_data = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
 			set_captured(true);
 		});
 		$retake.on("click", () => set_captured(false));
+		$tools.find("[data-annotation-tool]").on("click", (event) => {
+			annotation_tool = event.currentTarget.dataset.annotationTool;
+			$tools.find("[data-annotation-tool]").removeClass("active");
+			$(event.currentTarget).addClass("active");
+		});
+		$camera.find('[data-camera-action="undo"]').on("click", () => {
+			annotation_shapes.pop();
+			redraw_final();
+		});
+		$camera.find('[data-camera-action="clear"]').on("click", () => {
+			annotation_shapes = [];
+			redraw_final();
+			clear_annotation_overlay(annotation_canvas);
+		});
+		$(annotation_canvas).on("pointerdown", (event) => {
+			if (!captured) return;
+			annotation_canvas.setPointerCapture?.(event.originalEvent.pointerId);
+			const start = get_canvas_point(event.originalEvent);
+			active_shape = { tool: annotation_tool, start, end: start };
+		});
+		$(annotation_canvas).on("pointermove", (event) => {
+			if (!active_shape) return;
+			active_shape.end = get_canvas_point(event.originalEvent);
+			draw_annotation_overlay(annotation_canvas, active_shape);
+		});
+		$(annotation_canvas).on("pointerup pointercancel", (event) => {
+			if (!active_shape) return;
+			active_shape.end = get_canvas_point(event.originalEvent);
+			annotation_shapes.push(active_shape);
+			active_shape = null;
+			clear_annotation_overlay(annotation_canvas);
+			redraw_final();
+		});
 		d.get_field("mirror").$input.on("change", () => this.apply_camera_mirror(video, !!d.get_value("mirror")));
 		device_field.$wrapper.on("change", "select,input", async () => {
 			const selected = d.get_value("camera_device") || "";
@@ -2032,6 +2447,7 @@ class QualityInspectionTerminal {
 	get_photo_watermark_lines(doc = this.current) {
 		return [
 			`${__("Inspection Process")}: ${quality_process_label(doc?.quality_node)}`,
+			`${__("Item Code")}: ${doc?.item_code || "-"}`,
 			`${__("Time")}: ${format_local_datetime(new Date())}`,
 			`${__("Inspector")}: ${current_user_label()}`,
 		];
@@ -2235,10 +2651,11 @@ class QualityInspectionTerminal {
 					--jce-line-soft: rgba(0, 0, 0, 0.06);
 					--jce-text: #1d1d1f;
 					--jce-muted: #6e6e73;
-					--jce-blue: #0071e3;
-					--jce-green: #248a3d;
-					--jce-orange: #b65a00;
-					--jce-red: #c01f2f;
+						--jce-blue: #0071e3;
+						--jce-green: #248a3d;
+						--jce-teal: #0a7c70;
+						--jce-orange: #b65a00;
+						--jce-red: #c01f2f;
 					min-height: calc(100vh - 86px);
 					background: var(--jce-bg);
 					color: var(--jce-text);
@@ -2277,11 +2694,25 @@ class QualityInspectionTerminal {
 				}
 				body.jce-quality-terminal-fullscreen-active .modal.show {
 					display: block !important;
-					overflow: auto !important;
-					-webkit-overflow-scrolling: touch;
+					overflow: hidden !important;
 				}
 				body.jce-quality-terminal-fullscreen-active .modal-dialog {
-					margin: max(12px, env(safe-area-inset-top)) auto max(12px, env(safe-area-inset-bottom));
+					margin: max(8px, env(safe-area-inset-top)) auto max(8px, env(safe-area-inset-bottom));
+					max-height: calc(100dvh - max(16px, env(safe-area-inset-top)) - max(16px, env(safe-area-inset-bottom)));
+				}
+				body.jce-quality-terminal-focus-active .modal-content {
+					max-height: inherit;
+					display: flex;
+					flex-direction: column;
+					overflow: hidden;
+				}
+				body.jce-quality-terminal-focus-active .modal-body {
+					flex: 1 1 auto;
+					min-height: 0;
+					overflow: hidden;
+				}
+				body.jce-quality-terminal-focus-active .modal-footer {
+					flex: 0 0 auto;
 				}
 				body.jce-quality-terminal-focus-active .modal .modal-header {
 					position: sticky;
@@ -2416,14 +2847,88 @@ class QualityInspectionTerminal {
 					font-size: 10px;
 					font-weight: 700;
 				}
-				.jce-q-list-metrics b {
-					display: inline;
-					margin-left: 5px;
-					font-size: 14px;
-					line-height: 1;
-				}
-				.jce-q-filter-panel {
-					margin-bottom: 12px;
+					.jce-q-list-metrics b {
+						display: inline;
+						margin-left: 5px;
+						font-size: 14px;
+						line-height: 1;
+					}
+					.jce-q-entry-panel {
+						display: flex;
+						align-items: center;
+						flex-wrap: wrap;
+						gap: 8px;
+						margin-bottom: 10px;
+					}
+					.jce-q-entry-action {
+						min-width: 0;
+						min-height: 44px;
+						display: inline-flex;
+						align-items: center;
+						gap: 8px;
+						padding: 7px 11px 7px 8px;
+						border: 1px solid var(--jce-line-soft);
+						border-radius: 8px;
+						background: rgba(255, 255, 255, 0.82);
+						color: var(--jce-text);
+						text-align: left;
+						box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+						backdrop-filter: saturate(1.5) blur(14px);
+						-webkit-backdrop-filter: saturate(1.5) blur(14px);
+						transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease, background .16s ease;
+					}
+					.jce-q-entry-action:hover {
+						transform: translateY(-1px);
+						border-color: rgba(0, 113, 227, 0.22);
+						background: #fff;
+						box-shadow: 0 6px 16px rgba(0, 0, 0, 0.07);
+					}
+					.jce-q-entry-action.ipqc {
+						color: #07549f;
+					}
+					.jce-q-entry-action.oqc {
+						color: #075f58;
+					}
+					.jce-q-entry-icon {
+						width: 30px;
+						min-width: 30px;
+						height: 30px;
+						display: inline-flex;
+						align-items: center;
+						justify-content: center;
+						border-radius: 8px;
+						background: #f5f5f7;
+					}
+					.jce-q-entry-action.ipqc .jce-q-entry-icon {
+						color: var(--jce-blue);
+					}
+					.jce-q-entry-action.oqc .jce-q-entry-icon {
+						color: var(--jce-teal);
+					}
+					.jce-q-entry-copy {
+						min-width: 0;
+					}
+					.jce-q-entry-copy b,
+					.jce-q-entry-copy em {
+						display: block;
+						overflow: hidden;
+						text-overflow: ellipsis;
+						white-space: nowrap;
+					}
+					.jce-q-entry-copy b {
+						font-size: 13px;
+						font-weight: 800;
+						line-height: 1;
+					}
+					.jce-q-entry-copy em {
+						margin-top: 2px;
+						color: var(--jce-muted);
+						font-size: 11px;
+						font-style: normal;
+						font-weight: 650;
+					}
+					.jce-q-filter-panel {
+						margin-bottom: 12px;
 					padding: 10px;
 					border: 1px solid var(--jce-line-soft);
 					border-radius: 8px;
@@ -2503,13 +3008,17 @@ class QualityInspectionTerminal {
 					grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
 					gap: 12px;
 				}
-				.jce-q-task {
-					background: var(--jce-surface);
-					border: 1px solid var(--jce-line-soft);
-					border-radius: 8px;
-					padding: 10px;
-					box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
-				}
+					.jce-q-task {
+						background: var(--jce-surface);
+						border: 1px solid var(--jce-line-soft);
+						border-radius: 8px;
+						padding: 10px;
+						box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+					}
+					.jce-q-task.has-fai {
+						border-color: rgba(0, 113, 227, 0.28);
+						box-shadow: inset 3px 0 0 var(--jce-blue), 0 10px 30px rgba(0, 0, 0, 0.05);
+					}
 				.jce-q-task-card-head,
 				.jce-q-task-title,
 				.jce-q-section-head,
@@ -2685,10 +3194,38 @@ class QualityInspectionTerminal {
 					color: var(--jce-muted);
 					font-size: 11px;
 				}
-				.jce-q-node.ok { background: #ecf9f0; color: var(--jce-green); }
-				.jce-q-node.warn { background: #fff6e5; color: var(--jce-orange); }
-				.jce-q-node.danger { background: #fff1f2; color: var(--jce-red); }
-				.jce-q-focus-shell {
+					.jce-q-node.ok { background: #ecf9f0; color: var(--jce-green); }
+					.jce-q-node.warn { background: #fff6e5; color: var(--jce-orange); }
+					.jce-q-node.danger { background: #fff1f2; color: var(--jce-red); }
+					.jce-q-pill.fai { background: #eaf3ff; color: #07549f; }
+					.jce-q-manual-node-list {
+						display: flex;
+						flex-wrap: wrap;
+						gap: 6px;
+						margin: 4px 0 10px;
+					}
+					.jce-q-node-chip {
+						min-height: 34px;
+						display: inline-flex;
+						align-items: center;
+						gap: 7px;
+						padding: 5px 9px;
+						border: 1px solid rgba(0, 113, 227, 0.18);
+						border-radius: 8px;
+						background: #f2f8ff;
+						color: #07549f;
+					}
+					.jce-q-node-chip b,
+					.jce-q-node-chip em {
+						font-size: 12px;
+						font-style: normal;
+						font-weight: 800;
+						line-height: 1.15;
+					}
+					.jce-q-node-chip em {
+						color: var(--jce-muted);
+					}
+					.jce-q-focus-shell {
 					--toolbar-height: 58px;
 					width: 100%;
 					height: 100dvh;
@@ -2777,10 +3314,11 @@ class QualityInspectionTerminal {
 					background: #ffb340;
 					color: #3b2200;
 				}
-				.jce-q-small-button.danger {
-					background: #fff1f2;
-					color: var(--jce-red);
-				}
+					.jce-q-bar-button.danger,
+					.jce-q-small-button.danger {
+						background: #fff1f2;
+						color: var(--jce-red);
+					}
 				.jce-q-bar-button.subtle {
 					background: transparent;
 					border-color: var(--jce-line-soft);
@@ -2829,9 +3367,14 @@ class QualityInspectionTerminal {
 				.jce-q-back-button:hover,
 				.jce-q-icon-button:hover,
 				.jce-q-bar-button:hover,
-				.jce-q-small-button:hover {
-					border-color: rgba(0, 113, 227, 0.24);
-				}
+					.jce-q-small-button:hover {
+						border-color: rgba(0, 113, 227, 0.24);
+					}
+					.jce-q-bar-button:disabled,
+					.jce-q-small-button:disabled {
+						opacity: .52;
+						cursor: not-allowed;
+					}
 				.jce-q-focus-title {
 					min-width: 0;
 					flex: 1 1 auto;
@@ -3494,6 +4037,41 @@ class QualityInspectionTerminal {
 					display: inline-flex;
 					align-items: center;
 				}
+				.jce-q-defect-description {
+					margin-top: 4px;
+					min-height: 16px;
+					color: var(--jce-muted);
+					font-size: 12px;
+					line-height: 1.3;
+					overflow-wrap: anywhere;
+				}
+				.jce-q-oqc-list {
+					display: grid;
+					gap: 8px;
+					max-height: min(58dvh, 520px);
+					overflow: auto;
+					padding-right: 2px;
+				}
+				.jce-q-oqc-row {
+					display: flex;
+					align-items: center;
+					justify-content: space-between;
+					gap: 12px;
+					padding: 10px;
+					border: 1px solid var(--jce-line-soft);
+					border-radius: 8px;
+					background: #fff;
+				}
+				.jce-q-oqc-row b,
+				.jce-q-oqc-row span,
+				.jce-q-oqc-row em {
+					display: block;
+				}
+				.jce-q-oqc-row em {
+					color: var(--jce-muted);
+					font-style: normal;
+					font-size: 12px;
+				}
 				.jce-q-photos { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
 				.jce-q-photo {
 					padding: 10px;
@@ -3594,10 +4172,11 @@ class QualityInspectionTerminal {
 					font-weight: 800;
 					white-space: nowrap;
 				}
-				.jce-q-pill.ok { background: #ecf9f0; color: var(--jce-green); }
-				.jce-q-pill.warn { background: #fff6e5; color: var(--jce-orange); }
-				.jce-q-pill.danger { background: #fff1f2; color: var(--jce-red); }
-				.jce-q-task-drawer {
+					.jce-q-pill.ok { background: #ecf9f0; color: var(--jce-green); }
+					.jce-q-pill.warn { background: #fff6e5; color: var(--jce-orange); }
+					.jce-q-pill.danger { background: #fff1f2; color: var(--jce-red); }
+					.jce-q-pill.fai { background: #eaf3ff; color: #07549f; }
+					.jce-q-task-drawer {
 					position: fixed;
 					inset: 0 auto 0 0;
 					width: min(420px, 86vw);
@@ -3654,11 +4233,15 @@ class QualityInspectionTerminal {
 				}
 				.jce-q-camera-wrap {
 					display: grid;
-					gap: 12px;
+					gap: 8px;
+					height: 100%;
+					min-height: 0;
 				}
 				.jce-q-camera-stage {
 					position: relative;
 					width: min(100%, 920px);
+					height: min(58dvh, 680px);
+					max-height: calc(100dvh - 230px);
 					margin: 0 auto;
 					aspect-ratio: 4 / 3;
 					overflow: hidden;
@@ -3667,23 +4250,35 @@ class QualityInspectionTerminal {
 					border: 1px solid var(--jce-line-soft);
 				}
 				.jce-q-camera-video,
-				.jce-q-camera-canvas {
+				.jce-q-camera-canvas,
+				.jce-q-annotation-canvas {
 					width: 100%;
 					height: 100%;
 					object-fit: contain;
 					display: block;
 					background: #000;
 				}
+				.jce-q-annotation-canvas {
+					position: absolute;
+					inset: 0;
+					z-index: 3;
+					background: transparent;
+					touch-action: none;
+					cursor: crosshair;
+				}
 				.jce-q-camera-video[hidden],
 				.jce-q-camera-canvas[hidden],
+				.jce-q-annotation-canvas[hidden],
 				.jce-q-camera-shot[hidden],
-				.jce-q-camera-retake[hidden] {
+				.jce-q-camera-retake[hidden],
+				.jce-q-camera-tools[hidden] {
 					display: none;
 				}
 				.jce-q-camera-badge {
 					position: absolute;
 					right: 12px;
 					bottom: 12px;
+					z-index: 5;
 					max-width: calc(100% - 96px);
 					padding: 7px 10px;
 					border-radius: 8px;
@@ -3699,6 +4294,7 @@ class QualityInspectionTerminal {
 				.jce-q-camera-shot,
 				.jce-q-camera-retake {
 					position: absolute;
+					z-index: 6;
 					left: 50%;
 					bottom: 14px;
 					width: 54px;
@@ -3730,6 +4326,21 @@ class QualityInspectionTerminal {
 					font-size: 12px;
 					font-weight: 700;
 					text-align: center;
+				}
+				.jce-q-camera-tools {
+					display: flex;
+					align-items: center;
+					justify-content: center;
+					gap: 8px;
+					flex-wrap: wrap;
+				}
+				.jce-q-camera-tools .jce-q-small-button {
+					min-width: 42px;
+					height: 36px;
+				}
+				.jce-q-camera-tools .jce-q-small-button.active {
+					background: #111;
+					color: #fff;
 				}
 				.jce-q-empty {
 					padding: 28px;
@@ -3851,14 +4462,21 @@ class QualityInspectionTerminal {
 					}
 					.jce-q-drawing-actions { justify-content: flex-start; }
 				}
-				@media (max-width: 640px) {
-					.jce-q-list-header {
-						align-items: stretch;
-						flex-direction: column;
-					}
-					.jce-q-list-metrics {
-						justify-content: flex-start;
-					}
+					@media (max-width: 640px) {
+						.jce-q-list-header {
+							align-items: stretch;
+							flex-direction: column;
+						}
+						.jce-q-entry-panel {
+							align-items: stretch;
+						}
+						.jce-q-entry-action {
+							flex: 1 1 calc(50% - 4px);
+							min-height: 44px;
+						}
+						.jce-q-list-metrics {
+							justify-content: flex-start;
+						}
 					.jce-q-task-list { grid-template-columns: 1fr; }
 					.jce-q-task-meta-grid,
 					.jce-q-node-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -3897,7 +4515,11 @@ const JCE_ICONS = {
 	plus: '<path d="M12 5v14"/><path d="M5 12h14"/>',
 	"refresh-cw": '<path d="M21 12a9 9 0 0 1-15.5 6.2"/><path d="M3 12A9 9 0 0 1 18.5 5.8"/><path d="M18 2v4h4"/><path d="M6 22v-4H2"/>',
 	"rotate-ccw": '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v6h6"/>',
+	square: '<rect x="5" y="5" width="14" height="14" rx="1"/>',
+	circle: '<circle cx="12" cy="12" r="8"/>',
+	truck: '<path d="M10 17H6a2 2 0 0 1-2-2V6h11v11"/><path d="M15 9h3l3 4v4h-3"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/>',
 	"trash-2": '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>',
+	"undo-2": '<path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 1 1 0 12h-1"/>',
 	x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
 	"zoom-in": '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/><path d="M11 8v6"/><path d="M8 11h6"/>',
 	"zoom-out": '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/><path d="M8 11h6"/>',
@@ -4000,12 +4622,58 @@ function draw_photo_watermark(ctx, width, height, lines) {
 	ctx.restore();
 }
 
+function draw_photo_annotation(ctx, shape, width, height) {
+	if (!shape?.start || !shape?.end) return;
+	const x1 = shape.start.x * width;
+	const y1 = shape.start.y * height;
+	const x2 = shape.end.x * width;
+	const y2 = shape.end.y * height;
+	const left = Math.min(x1, x2);
+	const top = Math.min(y1, y2);
+	const w = Math.abs(x2 - x1);
+	const h = Math.abs(y2 - y1);
+	if (w < 4 || h < 4) return;
+	ctx.save();
+	ctx.strokeStyle = "#ff2d2d";
+	ctx.lineWidth = Math.max(8, Math.round(Math.min(width, height) * 0.008));
+	ctx.lineJoin = "round";
+	ctx.shadowColor = "rgba(0, 0, 0, 0.35)";
+	ctx.shadowBlur = ctx.lineWidth;
+	if (shape.tool === "circle") {
+		ctx.beginPath();
+		ctx.ellipse(left + w / 2, top + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+		ctx.stroke();
+	} else {
+		ctx.strokeRect(left, top, w, h);
+	}
+	ctx.restore();
+}
+
+function draw_annotation_overlay(canvas, shape) {
+	if (!canvas) return;
+	const rect = canvas.getBoundingClientRect();
+	const dpr = window.devicePixelRatio || 1;
+	canvas.width = Math.max(1, Math.round(rect.width * dpr));
+	canvas.height = Math.max(1, Math.round(rect.height * dpr));
+	const ctx = canvas.getContext("2d");
+	ctx.scale(dpr, dpr);
+	ctx.clearRect(0, 0, rect.width, rect.height);
+	draw_photo_annotation(ctx, shape, rect.width, rect.height);
+}
+
+function clear_annotation_overlay(canvas) {
+	if (!canvas) return;
+	const ctx = canvas.getContext("2d");
+	ctx?.clearRect(0, 0, canvas.width || 1, canvas.height || 1);
+}
+
 function quality_process_label(node) {
 	const labels = {
 		"First Article": "首件",
 		Patrol: "制程",
 		"Last Article": "末件",
 		"Final Release": "入库放行",
+		OQC: "出货检查",
 	};
 	return labels[node] || __(node || "");
 }
@@ -4038,6 +4706,16 @@ function inspection_status_label(status) {
 	if (status === "Rejected") return "NG";
 	if (status === "Accepted" || status === "Concession Released") return "OK";
 	return __("Pending");
+}
+
+function oqc_release_status_label(status) {
+	const labels = {
+		Pending: __("Pending"),
+		Released: __("Released"),
+		"Temporary Released": __("OQC Temporary Released"),
+		Blocked: __("OQC Blocked"),
+	};
+	return labels[status] || __(status || "");
 }
 
 function get_shift_options() {

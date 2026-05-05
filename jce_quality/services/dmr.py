@@ -94,11 +94,10 @@ def populate_dmr_from_source(dmr, source, item_code: str | None = None, dmr_type
 		dmr.source_date = source.posting_date or nowdate()
 		dmr.reference_number = source.work_order or source.work_order_scheduling
 		dmr.source_detail = source.quality_node
-		dmr.defect_description = source.remarks
+		dmr.remarks = source.remarks
 		if source.get("defects"):
-			first_defect = source.defects[0]
-			dmr.defect_code = first_defect.defect_code
-			dmr.defect_description = dmr.defect_description or first_defect.remarks or first_defect.defect_name
+			for defect in source.get("defects"):
+				append_dmr_defect(dmr, defect)
 		return
 
 	if source.doctype == "Delivery Note":
@@ -132,9 +131,22 @@ def get_check_dmr_type(check, requested_type: str | None = None) -> str:
 		return requested_type
 	if check.quality_node == "Patrol":
 		return "IPQC"
-	if check.quality_node == "Final Release":
+	if check.quality_node in ("Final Release", "OQC"):
 		return "OQC"
 	frappe.throw(_("Please select DMR Type for {0} quality check.").format(check.quality_node))
+
+
+def append_dmr_defect(dmr, source_defect):
+	if not source_defect.get("defect_code"):
+		return
+	row = dmr.append("defects", {})
+	row.defect_code = source_defect.defect_code
+	row.defect_name = source_defect.get("defect_name")
+	row.quantity = flt(source_defect.get("quantity")) or 1
+	row.category = source_defect.get("category")
+	row.severity = source_defect.get("severity")
+	row.description = source_defect.get("description")
+	row.remarks = source_defect.get("remarks")
 
 
 def get_existing_dmr(source_doctype: str, source_name: str, item_code: str | None) -> str | None:
@@ -303,6 +315,15 @@ def _new_transfer_stock_entry(dmr):
 		stock_entry.custom_purpose_of_transfer = "NG Transfer"
 	if meta.has_field("custom_reference_number"):
 		stock_entry.custom_reference_number = dmr.name
+	for fieldname, value in {
+		"custom_reference_doctype": "DMR",
+		"custom_reference_name": dmr.name,
+		"custom_dmr": dmr.name,
+	}.items():
+		if meta.has_field(fieldname):
+			stock_entry.set(fieldname, value)
+	if meta.has_field("remarks"):
+		stock_entry.remarks = _("Created from DMR {0}").format(dmr.name)
 	return stock_entry
 
 
