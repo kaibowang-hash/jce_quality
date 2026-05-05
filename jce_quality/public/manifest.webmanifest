@@ -1,0 +1,17 @@
+{
+  "name": "JCE Quality Terminal",
+  "short_name": "JCE Quality",
+  "start_url": "/app/quality-inspection-terminal",
+  "scope": "/app/",
+  "display": "standalone",
+  "background_color": "#f5f5f7",
+  "theme_color": "#f5f5f7",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/assets/jce_quality/icons/jce-quality-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

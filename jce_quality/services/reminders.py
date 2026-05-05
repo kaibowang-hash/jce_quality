@@ -7,8 +7,13 @@ from frappe import _
 from frappe.utils import add_days, add_to_date, cint, get_datetime, now_datetime, today
 
 from jce_quality.services.quality import (
+	get_applicable_rule,
+	get_enabled_quality_rules,
+	get_item_group_map,
+	get_latest_accepted_patrol_map,
 	get_patrol_task_info,
 	get_scheduling_item_quality_summary,
+	get_scheduling_items_quality_summary,
 	load_template_readings,
 	populate_check_from_scheduling,
 )
@@ -24,23 +29,57 @@ def scan_patrol_reminders():
 		limit_page_length=200,
 	)
 	processed = 0
+	if not schedules:
+		return processed
+
+	schedule_map = {schedule.name: schedule for schedule in schedules}
+	rows = frappe.get_all(
+		"Scheduling Item",
+		filters={"parent": ("in", list(schedule_map))},
+		fields=["name", "parent", "idx", "item_code", "item_name", "work_order", "workstation", "from_time", "to_time"],
+		order_by="parent asc, idx asc",
+	)
+	if not rows:
+		return processed
+
+	rows_by_schedule = {}
+	for row in rows:
+		rows_by_schedule.setdefault(row.parent, []).append(row)
+	row_names = [row.name for row in rows]
+	summaries = get_scheduling_items_quality_summary(row_names)
+	latest_patrol_map = get_latest_accepted_patrol_map(row_names)
+	item_group_map = get_item_group_map([row.item_code for row in rows])
+	patrol_rules = get_enabled_quality_rules("Patrol")
+	reminder_rules = get_reminder_rules()
+
 	for schedule in schedules:
-		rows = frappe.get_all(
-			"Scheduling Item",
-			filters={"parent": schedule.name},
-			fields=["name", "idx", "item_code", "item_name", "work_order", "workstation", "from_time", "to_time"],
-			order_by="idx asc",
-		)
-		for row in rows:
-			summary = get_scheduling_item_quality_summary(row.name)
-			patrol_info = get_patrol_task_info(schedule, row, summary)
+		for row in rows_by_schedule.get(schedule.name, []):
+			item_group = item_group_map.get(row.item_code)
+			summary = summaries.get(row.name) or get_scheduling_item_quality_summary(row.name)
+			patrol_rule = get_applicable_rule(
+				company=schedule.company,
+				plant_floor=schedule.plant_floor,
+				workstation=row.workstation,
+				item_code=row.item_code,
+				item_group=item_group,
+				quality_node="Patrol",
+				rules=patrol_rules,
+			)
+			patrol_info = get_patrol_task_info(
+				schedule,
+				row,
+				summary,
+				rule=patrol_rule,
+				latest_patrol_at=latest_patrol_map.get(row.name),
+				item_group=item_group,
+			)
 			if not (patrol_info.get("patrol_due") and patrol_info.get("next_patrol_due_at")):
 				continue
 			if summary.get("frozen") or summary.get("final_release_status") in ("Accepted", "Concession Released"):
 				continue
 
 			check_name = ensure_patrol_check(schedule, row)
-			rule = get_applicable_reminder_rule(schedule, row)
+			rule = get_applicable_reminder_rule(schedule, row, rules=reminder_rules)
 			recipients = get_reminder_recipients(rule)
 			if not recipients:
 				continue
@@ -79,8 +118,8 @@ def ensure_patrol_check(schedule, row):
 	return check.name
 
 
-def get_applicable_reminder_rule(schedule, row):
-	rules = frappe.get_all(
+def get_reminder_rules():
+	return frappe.get_all(
 		"Production Quality Reminder Rule",
 		filters={"disabled": 0, "quality_node": "Patrol"},
 		fields=[
@@ -94,6 +133,10 @@ def get_applicable_reminder_rule(schedule, row):
 			"repeat_interval_mins",
 		],
 	)
+
+
+def get_applicable_reminder_rule(schedule, row, rules=None):
+	rules = rules if rules is not None else get_reminder_rules()
 
 	def matches(rule, fieldname, value):
 		rule_value = rule.get(fieldname)

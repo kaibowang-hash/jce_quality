@@ -40,7 +40,7 @@ class QualityAnalytics {
 			{ fieldname: "to_date", label: __("To Date"), fieldtype: "Date", default: this.filters.to_date },
 			{ fieldname: "dimension", label: __("Dimension"), fieldtype: "Select", options: "workstation\nitem_code\nmold", default: this.filters.dimension },
 			{ fieldname: "plant_floor", label: __("Plant Floor"), fieldtype: "Link", options: "Plant Floor", default: this.filters.plant_floor },
-			{ fieldname: "shift_type", label: __("Shift"), fieldtype: "Select", options: "\n白班\n晚班", default: this.filters.shift_type },
+			{ fieldname: "shift_type", label: __("Shift"), fieldtype: "Select", options: get_shift_options(), default: this.filters.shift_type },
 			{ fieldname: "quality_node", label: __("Quality Node"), fieldtype: "Select", options: "\nFirst Article\nPatrol\nLast Article\nFinal Release", default: this.filters.quality_node },
 			{ fieldname: "only_ng", label: __("Only NG"), fieldtype: "Check", default: this.filters.only_ng },
 		];
@@ -71,6 +71,12 @@ class QualityAnalytics {
 		const metrics = data.metrics || {};
 		const content = this.body.find(".jce-q-analytics-content");
 		content.empty();
+		if (data.truncated?.checks || data.truncated?.defects) {
+			const parts = [];
+			if (data.truncated.checks) parts.push(__("inspection records"));
+			if (data.truncated.defects) parts.push(__("defect records"));
+			content.append(`<div class="jce-q-warning">${__("Analytics data was truncated for performance. Narrow the filters to review all {0}.", [parts.join(" / ")])}</div>`);
+		}
 		content.append(`
 			<div class="jce-q-metrics">
 				${metric(__("Production Qty"), metrics.production_qty || 0, "")}
@@ -99,6 +105,7 @@ class QualityAnalytics {
 			.jce-q-analytics-filters { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; border: 1px solid #d8dee9; border-radius: 16px; padding: 12px 14px; background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%); }
 			.jce-q-analytics-filter { min-width: 160px; }
 			.jce-q-analytics-content { display: flex; flex-direction: column; gap: 16px; }
+			.jce-q-warning { border: 1px solid #fed7aa; background: #fff7ed; color: #9a3412; border-radius: 8px; padding: 10px 12px; font-size: 13px; font-weight: 600; }
 			.jce-q-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
 			.jce-q-metric { border: 1px solid #d8dee9; border-radius: 16px; padding: 14px 15px; background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%); }
 			.jce-q-metric span { display: block; color: #64748b; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
@@ -173,9 +180,9 @@ function details_html(rows) {
 						<th>${__("Inspection")}</th>
 						<th>${__("Item")}</th>
 						<th>${__("Workstation")}</th>
-						<th>${__("Result")}</th>
-						<th>${__("Defects")}</th>
-						<th>${__("Rate")}</th>
+						<th>${__("Result", null, "JCE Quality")}</th>
+						<th>${__("Defects", null, "JCE Quality")}</th>
+						<th>${__("Rate", null, "JCE Quality")}</th>
 						<th>${__("Actions")}</th>
 					</tr>
 				</thead>
@@ -190,8 +197,8 @@ function details_html(rows) {
 							<td>${esc(row.defect_codes || "-")}<div class="text-muted">${esc(row.defect_total || 0)}</div></td>
 							<td>${pct(row.production_defect_rate)}</td>
 							<td>
-								<button class="btn btn-xs btn-default" data-open-check="${esc(row.name)}">${__("Check")}</button>
-								${row.work_order_scheduling ? `<button class="btn btn-xs btn-default" data-open-scheduling="${esc(row.work_order_scheduling)}">${__("Schedule")}</button>` : ""}
+								<button class="btn btn-xs btn-default" data-open-check="${esc(row.name)}">${__("Check", null, "JCE Quality")}</button>
+								${row.work_order_scheduling ? `<button class="btn btn-xs btn-default" data-open-scheduling="${esc(row.work_order_scheduling)}">${__("Schedule", null, "JCE Quality")}</button>` : ""}
 							</td>
 						</tr>
 					`).join("")}
@@ -207,4 +214,9 @@ function pct(value) {
 
 function esc(value) {
 	return frappe.utils.escape_html(String(value ?? ""));
+}
+
+function get_shift_options() {
+	const df = frappe.meta.get_docfield("Work Order Scheduling", "shift_type");
+	return df?.options || "\n白班\n晚班";
 }

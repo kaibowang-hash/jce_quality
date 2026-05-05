@@ -116,7 +116,7 @@
    "label": "Finished At"
   },
   {
-   "default": "user",
+   "default": "__user",
    "fieldname": "inspected_by",
    "fieldtype": "Link",
    "label": "Inspected By",
@@ -282,7 +282,7 @@
    "fieldname": "sample_manager",
    "fieldtype": "Link",
    "in_standard_filter": 1,
-   "label": "Sample Manager",
+   "label": "Reference Sample",
    "options": "Sample Manager"
   },
   {
@@ -460,6 +460,18 @@
    "read": 1,
    "report": 1,
    "role": "Quality Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Quality User",
    "share": 1,
    "submit": 1,
    "write": 1

@@ -36,7 +36,7 @@ class QualityControlBoard {
 		const fields = [
 			{ fieldname: "posting_date", label: __("Date"), fieldtype: "Date", default: this.filters.posting_date },
 			{ fieldname: "plant_floor", label: __("Plant Floor"), fieldtype: "Link", options: "Plant Floor", default: this.filters.plant_floor },
-			{ fieldname: "shift_type", label: __("Shift"), fieldtype: "Select", options: "\n白班\n晚班", default: this.filters.shift_type },
+			{ fieldname: "shift_type", label: __("Shift"), fieldtype: "Select", options: get_shift_options(), default: this.filters.shift_type },
 		];
 		fields.forEach((df) => {
 			const holder = $('<div class="jce-q-board-filter"></div>').appendTo(filterBar);
@@ -89,7 +89,7 @@ class QualityControlBoard {
 			</div>
 		`);
 		content.append(`
-			<div class="jce-q-section-title">${__("Open Tasks")}</div>
+			<div class="jce-q-section-title">${__("Open Tasks", null, "JCE Quality")}</div>
 			<div class="jce-q-task-table">
 				${(data.tasks || []).map((task) => row_html(task)).join("") || `<div class="jce-q-empty">${__("No tasks found.")}</div>`}
 			</div>
@@ -223,7 +223,7 @@ function row_html(task) {
 	const patrol = !cint(task.patrol_required_count)
 		? "-"
 		: task.patrol_overdue
-			? `<span class="jce-q-status-danger">${__("Overdue")}</span>`
+			? `<span class="jce-q-status-danger">${__("Overdue", null, "JCE Quality")}</span>`
 			: `${cint(task.patrol_count)} / ${cint(task.patrol_required_count)}`;
 	return `
 		<div class="jce-q-row">
@@ -232,7 +232,7 @@ function row_html(task) {
 			<div>${esc(task.workstation || "-")}</div>
 			<div>${__("Patrol")}: ${patrol}</div>
 			<div>${status}</div>
-			<button class="btn btn-xs btn-default" data-open-scheduling="${esc(task.work_order_scheduling)}">${__("Open")}</button>
+			<button class="btn btn-xs btn-default" data-open-scheduling="${esc(task.work_order_scheduling)}">${__("Open", null, "JCE Quality")}</button>
 		</div>
 	`;
 }
@@ -243,6 +243,11 @@ function esc(value) {
 
 function cint(value) {
 	return parseInt(value || 0, 10) || 0;
+}
+
+function get_shift_options() {
+	const df = frappe.meta.get_docfield("Work Order Scheduling", "shift_type");
+	return df?.options || "\n白班\n晚班";
 }
 
 function clean_route_options(options) {

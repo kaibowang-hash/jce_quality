@@ -29,6 +29,12 @@
 - `Quality Inspection Terminal`：iPad 在线检验终端。
 - `Quality Control Board`：现场质量执行看板。
 
+## 版本兼容
+
+- 目标适配：ERPNext / Frappe V15 及以上。
+- 本 app 依赖 `Work Order Scheduling`、`Scheduling Item`、`Sample Manager` 等现场排产对象；V15 环境安装前需确认这些对象已由对应生产排产 app 提供，并完成 `bench migrate`。
+- 当前质量终端的执行权限限定为 `System Manager`、`Quality Manager`、`Quality User`；生产角色保留看板/只读入口，不再具备直接创建或提交质量检验的权限。
+
 ## 安装
 
 ```bash

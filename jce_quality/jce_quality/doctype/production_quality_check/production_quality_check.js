@@ -12,6 +12,10 @@ frappe.ui.form.on("Production Quality Check", {
 
 		if (frm.doc.docstatus === 1 && frm.doc.overall_status === "Rejected") {
 			frm.add_custom_button(__("Set Disposition"), () => set_disposition(frm), __("Quality"));
+			frm.add_custom_button(__("Create DMR"), () => create_dmr_from_check(frm), __("Quality"));
+			if (frm.doc.quality_node === "Patrol" && frm.doc.defect_confirmation_status === "Pending") {
+				frm.add_custom_button(__("Confirm IPQC Defect"), () => confirm_ipqc_defect(frm), __("Quality"));
+			}
 			if (frm.doc.disposition === "Concession Release" && !frm.doc.release_approved) {
 				frm.add_custom_button(__("Approve Concession Release"), () => {
 					frappe.call({
@@ -77,4 +81,64 @@ function set_disposition(frm) {
 		},
 	});
 	dialog.show();
+}
+
+function create_dmr_from_check(frm) {
+	const create = (dmr_type) => {
+		frappe.call({
+			method: "jce_quality.api.dmr.create_dmr_from_source",
+			args: {
+				source_doctype: "Production Quality Check",
+				source_name: frm.doc.name,
+				item_code: frm.doc.item_code,
+				dmr_type,
+			},
+			freeze: true,
+			freeze_message: __("Creating DMR..."),
+		}).then((r) => {
+			if (r.message) frappe.set_route("Form", "DMR", r.message);
+		});
+	};
+	if (frm.doc.quality_node === "Patrol") {
+		create("IPQC");
+		return;
+	}
+	if (frm.doc.quality_node === "Final Release") {
+		create("OQC");
+		return;
+	}
+	frappe.prompt(
+		[
+			{
+				fieldname: "dmr_type",
+				fieldtype: "Select",
+				label: __("DMR Type"),
+				options: "\nIPQC\nOQC",
+				reqd: 1,
+			},
+		],
+		(values) => create(values.dmr_type),
+		__("Create DMR")
+	);
+}
+
+function confirm_ipqc_defect(frm) {
+	frappe.prompt(
+		[{ fieldname: "remarks", fieldtype: "Small Text", label: __("Remarks") }],
+		(values) => {
+			frappe.call({
+				method: "jce_quality.api.quality.confirm_ipqc_defect",
+				args: {
+					check_name: frm.doc.name,
+					remarks: values.remarks,
+					create_dmr: 0,
+				},
+				freeze: true,
+				freeze_message: __("Confirming defect..."),
+			}).then(() => {
+				frm.reload_doc();
+			});
+		},
+		__("Confirm IPQC Defect")
+	);
 }

@@ -1,0 +1,33 @@
+{
+ "creation": "2026-05-05 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "update_date",
+  "from_version",
+  "to_version",
+  "update_reason",
+  "updated_by",
+  "source_template",
+  "new_template"
+ ],
+ "fields": [
+  {"fieldname": "update_date", "fieldtype": "Datetime", "in_list_view": 1, "label": "Update Date", "read_only": 1},
+  {"fieldname": "from_version", "fieldtype": "Data", "in_list_view": 1, "label": "From Version", "read_only": 1},
+  {"fieldname": "to_version", "fieldtype": "Data", "in_list_view": 1, "label": "To Version", "read_only": 1},
+  {"fieldname": "update_reason", "fieldtype": "Small Text", "in_list_view": 1, "label": "Update Reason", "read_only": 1},
+  {"fieldname": "updated_by", "fieldtype": "Link", "label": "Updated By", "options": "User", "read_only": 1},
+  {"fieldname": "source_template", "fieldtype": "Link", "label": "Source Template", "options": "Quality Inspection Template", "read_only": 1},
+  {"fieldname": "new_template", "fieldtype": "Link", "label": "New Template", "options": "Quality Inspection Template", "read_only": 1}
+ ],
+ "istable": 1,
+ "modified": "2026-05-05 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "JCE Quality",
+ "name": "Quality Inspection Template Version Log",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC"
+}
