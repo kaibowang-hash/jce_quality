@@ -347,7 +347,7 @@
    "fieldname": "disposition",
    "fieldtype": "Select",
    "label": "Disposition",
-   "options": "\nRework\nScrap\nConcession Release"
+   "options": "\nTemporary Continue\nStop Production\nRework\nScrap\nConcession Release"
   },
   {
    "allow_on_submit": 1,

@@ -19,6 +19,14 @@ from jce_quality.services.template_baseline import apply_template_to_check
 QUALITY_NODES = ("First Article", "Patrol", "Last Article", "Final Release")
 READING_TEMPLATE_METADATA_FIELDS = ("inspection_method", "inspection_standard")
 PASSING_STATUSES = ("Accepted", "Concession Released")
+TEMPORARY_CONTINUE_DISPOSITION = "Temporary Continue"
+DISPOSITION_OPTIONS = (
+	TEMPORARY_CONTINUE_DISPOSITION,
+	"Stop Production",
+	"Rework",
+	"Scrap",
+	"Concession Release",
+)
 SCHEDULING_ITEM_STATUS_FIELDS = {
 	"First Article": "jce_quality_first_article_status",
 	"Last Article": "jce_quality_last_article_status",
@@ -261,6 +269,8 @@ def get_extra_patrol_count(scheduling_row=None) -> int:
 
 def summary_meets_requirements(summary: dict, requirements: dict) -> bool:
 	if summary.get("frozen"):
+		return False
+	if summary.get("active_ng_checks"):
 		return False
 	if requirements.get("First Article") and summary.get("first_article_status") not in PASSING_STATUSES:
 		return False
@@ -730,16 +740,52 @@ def get_missing_check_count(scheduling_doc, scheduling_row, node: str, item_grou
 	if not required_count:
 		return 0
 
-	existing = frappe.db.count(
+	existing_checks = frappe.get_all(
 		"Production Quality Check",
-		{
+		filters={
 			"work_order_scheduling": scheduling_doc.name,
 			"scheduling_item": scheduling_row.name,
 			"quality_node": node,
 			"docstatus": ("<", 2),
 		},
+		fields=["docstatus", "overall_status"],
+	)
+	existing = sum(
+		1
+		for check in existing_checks
+		if cint(check.docstatus) == 0 or (cint(check.docstatus) == 1 and check.overall_status in PASSING_STATUSES)
 	)
 	return max(required_count - existing, 0)
+
+
+def is_production_blocking_ng(check) -> bool:
+	return (
+		cint(check.get("docstatus")) == 1
+		and check.get("overall_status") == "Rejected"
+		and check.get("disposition") != TEMPORARY_CONTINUE_DISPOSITION
+	)
+
+
+def is_temporary_continue_ng(check) -> bool:
+	return (
+		cint(check.get("docstatus")) == 1
+		and check.get("overall_status") == "Rejected"
+		and check.get("disposition") == TEMPORARY_CONTINUE_DISPOSITION
+	)
+
+
+def get_ng_disposition_state(check) -> str:
+	if check.get("overall_status") == "Concession Released":
+		return "Concession Released"
+	if check.get("disposition") == TEMPORARY_CONTINUE_DISPOSITION:
+		return "Temporary Continue"
+	if check.get("disposition") == "Concession Release":
+		return "Pending Concession Approval"
+	if check.get("disposition") in ("Stop Production", "Rework", "Scrap"):
+		return check.get("disposition")
+	if check.get("overall_status") == "Rejected":
+		return "Pending Disposition"
+	return check.get("overall_status") or "Pending"
 
 
 def get_scheduling_item_quality_summary(scheduling_item: str):
@@ -755,7 +801,22 @@ def get_scheduling_items_quality_summary(scheduling_items: list[str]):
 	checks = frappe.get_all(
 		"Production Quality Check",
 		filters={"scheduling_item": ("in", scheduling_items), "docstatus": ("<", 2)},
-		fields=["name", "scheduling_item", "quality_node", "overall_status", "status", "docstatus", "modified"],
+		fields=[
+			"name",
+			"scheduling_item",
+			"quality_node",
+			"overall_status",
+			"status",
+			"docstatus",
+			"disposition",
+			"disposition_remarks",
+			"disposition_by",
+			"disposition_at",
+			"release_approved",
+			"release_approved_by",
+			"release_approved_at",
+			"modified",
+		],
 		order_by="scheduling_item asc, modified desc",
 	)
 
@@ -764,9 +825,27 @@ def get_scheduling_items_quality_summary(scheduling_items: list[str]):
 		if not summary["latest_check"]:
 			summary["latest_check"] = check.name
 		if check.docstatus == 1 and check.overall_status == "Rejected":
-			summary["frozen"] = True
-			if check.quality_node not in summary["_rejected_by_node"]:
+			ng_entry = {
+				"name": check.name,
+				"quality_node": check.quality_node,
+				"disposition": check.disposition,
+				"disposition_state": get_ng_disposition_state(check),
+				"disposition_remarks": check.disposition_remarks,
+				"disposition_by": check.disposition_by,
+				"disposition_at": check.disposition_at,
+				"release_approved": cint(check.release_approved),
+				"release_approved_by": check.release_approved_by,
+				"release_approved_at": check.release_approved_at,
+				"production_blocking": is_production_blocking_ng(check),
+				"modified": check.modified,
+			}
+			summary["active_ng_checks"].append(ng_entry)
+			if is_production_blocking_ng(check):
+				summary["frozen"] = True
+			if is_production_blocking_ng(check):
 				summary["_rejected_by_node"][check.quality_node] = "Rejected"
+			elif check.quality_node not in summary["_rejected_by_node"]:
+				summary["_rejected_by_node"][check.quality_node] = TEMPORARY_CONTINUE_DISPOSITION
 		if check.quality_node == "Patrol" and check.docstatus == 1 and check.overall_status in PASSING_STATUSES:
 			summary["patrol_count"] += 1
 		if check.quality_node not in summary["_latest_by_node"]:
@@ -788,6 +867,7 @@ def _empty_quality_summary():
 		"latest_check": None,
 		"frozen": False,
 		"patrol_count": 0,
+		"active_ng_checks": [],
 		"first_article_status": "Pending",
 		"patrol_status": "Pending",
 		"last_article_status": "Pending",
@@ -1369,7 +1449,7 @@ def mark_disposition(doc, disposition: str, remarks: str | None = None):
 		frappe.throw(_("Disposition can only be recorded after the quality check is submitted."))
 	if doc.overall_status != "Rejected":
 		frappe.throw(_("Disposition is only required for rejected checks."))
-	if disposition not in ("Rework", "Scrap", "Concession Release"):
+	if disposition not in DISPOSITION_OPTIONS:
 		frappe.throw(_("Invalid disposition {0}.").format(disposition))
 
 	doc.db_set("disposition", disposition, update_modified=False)
@@ -1380,8 +1460,6 @@ def mark_disposition(doc, disposition: str, remarks: str | None = None):
 
 
 def approve_concession_release(doc):
-	if "Quality Manager" not in frappe.get_roles():
-		frappe.throw(_("Only Quality Manager can approve concession release."))
 	if doc.docstatus != 1:
 		frappe.throw(_("Concession release can only be approved after the quality check is submitted."))
 	if doc.overall_status != "Rejected" or doc.disposition != "Concession Release":

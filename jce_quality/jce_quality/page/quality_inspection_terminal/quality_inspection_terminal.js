@@ -204,6 +204,10 @@ class QualityInspectionTerminal {
 				event.stopPropagation();
 				this.open_check(task, event.currentTarget.dataset.node);
 			});
+			row.find("[data-check-name]").on("click", (event) => {
+				event.stopPropagation();
+				this.open_check_by_name(event.currentTarget.dataset.checkName, task);
+			});
 		});
 	}
 
@@ -223,7 +227,10 @@ class QualityInspectionTerminal {
 	}
 
 	task_card(task) {
-		const frozen = task.frozen ? `<span class="jce-q-pill danger">${__("NG Frozen")}</span>` : "";
+		const ng_checks = task.active_ng_checks || [];
+		const has_temporary_continue = ng_checks.some((row) => row.disposition_state === "Temporary Continue");
+		const frozen = task.frozen ? `<span class="jce-q-pill danger">${__("Production Hold")}</span>` : "";
+		const temporary_continue = has_temporary_continue ? `<span class="jce-q-pill warn">${__("Temporary Continue")}</span>` : "";
 		const customer_code = clean_value(task.customer_code);
 		const patrol_complete = cint(task.patrol_count) >= cint(task.patrol_required_count);
 		const patrol_status = task.patrol_status === "Rejected"
@@ -252,7 +259,7 @@ class QualityInspectionTerminal {
 			<div class="jce-q-task">
 				<div class="jce-q-task-card-head">
 					<span class="jce-q-station">${esc(task.workstation || "-")}</span>
-					<div class="jce-q-task-badges">${complete_pill}${alert_pill}${frozen}</div>
+					<div class="jce-q-task-badges">${complete_pill}${alert_pill}${frozen}${temporary_continue}</div>
 				</div>
 				<div class="jce-q-task-title">
 					<div>
@@ -262,6 +269,7 @@ class QualityInspectionTerminal {
 					</div>
 				</div>
 				${alert_note}
+				${this.render_task_ng_followups(task)}
 				<div class="jce-q-task-meta-grid">
 					<div><span>${__("Work Order")}</span><b>${esc(task.work_order || "-")}</b></div>
 					<div><span>${__("Qty")}</span><b>${esc(format_float(task.scheduling_qty || 0))}</b></div>
@@ -274,6 +282,25 @@ class QualityInspectionTerminal {
 					${this.node_button("Last Article", last_article_status)}
 					${this.node_button("Final Release", final_release_status)}
 				</div>
+			</div>
+		`;
+	}
+
+	render_task_ng_followups(task) {
+		const checks = task.active_ng_checks || [];
+		if (!checks.length) return "";
+		return `
+			<div class="jce-q-task-ng-list">
+				<div class="jce-q-task-ng-title">
+					<span>${__("NG Tracking")}</span>
+					<b>${checks.length} ${__("items")}</b>
+				</div>
+				${checks.slice(0, 3).map((row) => `
+					<button type="button" class="jce-q-task-ng-row ${row.production_blocking ? "danger" : "warn"}" data-check-name="${esc(row.name)}">
+						<span>${esc(quality_process_label(row.quality_node))}</span>
+						<b>${esc(__(row.disposition_state || "Pending Disposition"))}</b>
+					</button>
+				`).join("")}
 			</div>
 		`;
 	}
@@ -296,6 +323,23 @@ class QualityInspectionTerminal {
 			freeze_message: __("Opening inspection..."),
 		}).then((r) => {
 			this.selectedTask = task;
+			this.current = r.message;
+			this.enter_focus_mode();
+		}).catch((error) => {
+			console.error(error);
+			frappe.show_alert({ message: __("Unable to open inspection."), indicator: "red" });
+		});
+	}
+
+	open_check_by_name(check_name, task = null) {
+		if (!check_name) return;
+		frappe.call({
+			method: "jce_quality.api.quality.get_check_payload",
+			args: { check_name },
+			freeze: true,
+			freeze_message: __("Opening inspection..."),
+		}).then((r) => {
+			this.selectedTask = task || this.selectedTask;
 			this.current = r.message;
 			this.enter_focus_mode();
 		}).catch((error) => {
@@ -372,8 +416,7 @@ class QualityInspectionTerminal {
 				<button class="jce-q-bar-button" data-action="save">${__("Save Draft")}</button>
 				<button class="jce-q-bar-button primary" data-action="submit">${__("Submit")}</button>
 				${this.fullscreen_toolbar_button()}`
-			: `${doc.overall_status === "Rejected" && doc.disposition !== "Concession Release" ? `<button class="jce-q-bar-button warn" data-action="concession">${__("Concession")}</button>` : ""}
-				${this.fullscreen_toolbar_button()}
+			: `${this.fullscreen_toolbar_button()}
 				<button class="jce-q-bar-button" data-action="open-form">${__("Open Form")}</button>`;
 
 		return `
@@ -420,6 +463,7 @@ class QualityInspectionTerminal {
 			${this.render_pwa_hint()}
 			${this.render_related_alert_banner(doc)}
 			${this.render_quick_actions(doc)}
+			${this.render_ng_disposition_panel(doc)}
 			${this.render_related_alerts(doc)}
 			<section class="jce-q-panel">
 				<div class="jce-q-section-head">
@@ -632,6 +676,78 @@ class QualityInspectionTerminal {
 		`;
 	}
 
+	render_ng_disposition_panel(doc) {
+		const should_show = doc.overall_status === "Rejected" || doc.overall_status === "Concession Released" || doc.disposition || cint(doc.release_approved);
+		if (!should_show) return "";
+		const state = this.get_ng_disposition_state(doc);
+		const production_state = doc.overall_status === "Concession Released"
+			? __("Released")
+			: doc.disposition === "Temporary Continue"
+				? __("Production May Continue")
+				: __("Production Hold");
+		const gate_state = doc.overall_status === "Concession Released"
+			? __("Final Gate Passed")
+			: __("Final Gate Blocked");
+		const actions = this.render_disposition_actions(doc);
+		return `
+			<section class="jce-q-panel jce-q-disposition-panel">
+				<div class="jce-q-section-head">
+					<div>
+						<span>${__("NG Disposition Tracking")}</span>
+						<b>${esc(__(state))}</b>
+					</div>
+					<span class="jce-q-pill ${doc.disposition === "Temporary Continue" ? "warn" : doc.overall_status === "Concession Released" ? "ok" : "danger"}">${esc(production_state)}</span>
+				</div>
+				<div class="jce-q-disposition-grid">
+					${this.render_info_item(__("Production Status"), production_state)}
+					${this.render_info_item(__("Quality Gate"), gate_state)}
+					${this.render_info_item(__("Disposition"), doc.disposition ? __(doc.disposition) : __("Pending Disposition"))}
+					${this.render_info_item(__("Disposition By"), doc.disposition_by || "-")}
+					${this.render_info_item(__("Disposition At"), format_display_datetime(doc.disposition_at))}
+					${this.render_info_item(__("Concession Approval"), cint(doc.release_approved) ? __("Approved") : __("Not Approved"))}
+				</div>
+				${doc.disposition_remarks ? `<div class="jce-q-disposition-note"><span>${__("Disposition Remarks")}</span><b>${esc(doc.disposition_remarks)}</b></div>` : ""}
+				${actions}
+			</section>
+		`;
+	}
+
+	get_ng_disposition_state(doc) {
+		if (doc.overall_status === "Concession Released") return "Concession Released";
+		if (doc.disposition === "Temporary Continue") return "Temporary Continue";
+		if (doc.disposition === "Concession Release") return cint(doc.release_approved) ? "Concession Released" : "Pending Concession Approval";
+		if (["Stop Production", "Rework", "Scrap"].includes(doc.disposition)) return doc.disposition;
+		if (doc.overall_status === "Rejected") return "Pending Disposition";
+		return doc.overall_status || "Pending";
+	}
+
+	render_disposition_actions(doc) {
+		if (doc.overall_status !== "Rejected") return "";
+		const permissions = doc.terminal_permissions || {};
+		const buttons = [`<button class="jce-q-bar-button" data-action="add-note">${__("Add Note")}</button>`];
+		const can_temporary_continue = permissions.can_temporary_continue && (!doc.disposition || doc.disposition === "Temporary Continue" || permissions.can_disposition);
+		if (can_temporary_continue) {
+			buttons.push(`<button class="jce-q-bar-button warn" data-action="set-disposition" data-disposition="Temporary Continue">${__("Temporary Continue")}</button>`);
+		}
+		if (permissions.can_disposition) {
+			[
+				["Stop Production", __("Stop Production")],
+				["Rework", __("Rework")],
+				["Scrap", __("Scrap")],
+				["Concession Release", __("Request Concession")],
+			].forEach(([value, label]) => {
+				buttons.push(`<button class="jce-q-bar-button" data-action="set-disposition" data-disposition="${esc(value)}">${esc(label)}</button>`);
+			});
+		}
+		if (permissions.can_approve_concession && doc.disposition === "Concession Release" && !cint(doc.release_approved)) {
+			buttons.push(`<button class="jce-q-bar-button primary" data-action="approve-concession">${__("Approve Concession")}</button>`);
+		}
+		if (!buttons.length) {
+			return `<div class="jce-q-disposition-help">${__("Waiting for an authorized user to record disposition.")}</div>`;
+		}
+		return `<div class="jce-q-disposition-actions">${buttons.join("")}</div>`;
+	}
+
 	render_pdf_viewer(doc) {
 		const drawing = this.get_drawing_url(doc);
 		if (!drawing) {
@@ -713,7 +829,9 @@ class QualityInspectionTerminal {
 		shell.find('[data-action="fullscreen"]').on("click", () => this.toggle_fullscreen());
 		shell.find('[data-action="show-drawing"]').on("click", () => this.show_drawing());
 		shell.find('[data-action="hide-drawing"]').on("click", () => this.hide_drawing());
-		shell.find('[data-action="concession"]').on("click", () => this.apply_concession());
+		shell.find('[data-action="set-disposition"]').on("click", (event) => this.open_disposition_sheet(event.currentTarget.dataset.disposition));
+		shell.find('[data-action="approve-concession"]').on("click", () => this.approve_concession_release());
+		shell.find('[data-action="add-note"]').on("click", () => this.open_note_sheet());
 		shell.find('[data-action="open-form"]').on("click", () => frappe.set_route("Form", "Production Quality Check", this.current.name));
 		shell.find('[data-action="attach"]').on("click", () => this.attach_photo());
 		shell.find('[data-action="add-defect"]').on("click", () => this.add_defect_row());
@@ -1521,26 +1639,91 @@ class QualityInspectionTerminal {
 	}
 
 	apply_concession() {
-		frappe.prompt(
-			[{ fieldname: "remarks", fieldtype: "Small Text", label: __("Remarks") }],
-			(values) => {
-				frappe.call({
+		this.open_disposition_sheet("Concession Release");
+	}
+
+	open_disposition_sheet(disposition) {
+		if (!this.current || !disposition) return;
+		const action_note = this.build_action_note(this.current);
+		this.open_terminal_sheet({
+			title: __(disposition),
+			body: `
+				<div class="jce-q-dialog-summary">${esc(action_note)}</div>
+				<label class="jce-q-sheet-field">
+					<span>${__("Disposition Remarks")}</span>
+					<textarea data-sheet-field="remarks">${esc(this.current.disposition_remarks || action_note || "")}</textarea>
+				</label>
+			`,
+			primary_label: __("Save"),
+			on_primary: async (sheet) => {
+				const remarks = sheet.find('[data-sheet-field="remarks"]').val();
+				const r = await frappe.call({
 					method: "jce_quality.api.quality.set_disposition",
 					args: {
 						check_name: this.current.name,
-						disposition: "Concession Release",
-						remarks: values.remarks,
+						disposition,
+						remarks,
 					},
 					freeze: true,
-					freeze_message: __("Applying concession release..."),
-				}).then((r) => {
-					this.current = r.message;
-					this.render_focus_shell();
-					this.refresh();
+					freeze_message: __("Saving disposition..."),
 				});
+				this.current = r.message;
+				this.close_terminal_sheet();
+				this.render_focus_shell();
+				this.refresh();
 			},
-			__("Apply Concession Release")
-		);
+		});
+	}
+
+	approve_concession_release() {
+		if (!this.current) return;
+		this.open_terminal_sheet({
+			title: __("Approve Concession"),
+			body: `<div class="jce-q-dialog-summary">${esc(this.build_action_note(this.current) || __("Approve concession release for this NG inspection."))}</div>`,
+			primary_label: __("Approve"),
+			on_primary: async () => {
+				const r = await frappe.call({
+					method: "jce_quality.api.quality.approve_concession_release",
+					args: { check_name: this.current.name },
+					freeze: true,
+					freeze_message: __("Approving concession..."),
+				});
+				this.current = r.message;
+				this.close_terminal_sheet();
+				this.render_focus_shell();
+				this.refresh();
+			},
+		});
+	}
+
+	open_note_sheet() {
+		if (!this.current) return;
+		this.open_terminal_sheet({
+			title: __("Add Note"),
+			body: `
+				<label class="jce-q-sheet-field">
+					<span>${__("Operator Note")}</span>
+					<textarea data-sheet-field="remarks">${esc(this.current.remarks || "")}</textarea>
+				</label>
+			`,
+			primary_label: __("Save"),
+			on_primary: async (sheet) => {
+				const remarks = sheet.find('[data-sheet-field="remarks"]').val();
+				const r = await frappe.call({
+					method: "jce_quality.api.quality.save_check",
+					args: {
+						check_name: this.current.name,
+						remarks,
+					},
+					freeze: true,
+					freeze_message: __("Saving note..."),
+				});
+				this.current = r.message;
+				this.close_terminal_sheet();
+				this.render_focus_shell();
+				this.refresh();
+			},
+		});
 	}
 
 	attach_photo() {
@@ -2053,7 +2236,9 @@ class QualityInspectionTerminal {
 					transform: translateY(-50%);
 				}
 				body.jce-quality-terminal-focus-active .modal .modal-header .btn-modal-close,
-				body.jce-quality-terminal-focus-active .modal .modal-header .btn-modal-minimize {
+				body.jce-quality-terminal-focus-active .modal .modal-header .btn-modal-minimize,
+				body.jce-quality-terminal-focus-active .modal .modal-header .btn-close,
+				body.jce-quality-terminal-focus-active .modal .modal-header .close {
 					width: 36px;
 					min-width: 36px;
 					height: 36px;
@@ -2063,6 +2248,19 @@ class QualityInspectionTerminal {
 					justify-content: center;
 					padding: 0 !important;
 					border-radius: 8px;
+				}
+				body.jce-quality-terminal-focus-active .modal .modal-header > .btn-modal-close,
+				body.jce-quality-terminal-focus-active .modal .modal-header > .btn-close,
+				body.jce-quality-terminal-focus-active .modal .modal-header > .close {
+					position: absolute !important;
+					top: 50% !important;
+					right: 12px !important;
+					margin: 0 !important;
+					transform: translateY(-50%) !important;
+				}
+				body.jce-quality-terminal-focus-active .modal .modal-header svg {
+					display: block;
+					margin: 0;
 				}
 				.jce-q-terminal:fullscreen {
 					width: 100vw;
@@ -2305,6 +2503,44 @@ class QualityInspectionTerminal {
 					-webkit-box-orient: vertical;
 					overflow: hidden;
 				}
+				.jce-q-task-ng-list {
+					display: grid;
+					gap: 6px;
+					margin-top: 7px;
+					padding: 8px;
+					border: 1px solid rgba(192, 31, 47, 0.14);
+					border-radius: 8px;
+					background: #fff7f8;
+				}
+				.jce-q-task-ng-title,
+				.jce-q-task-ng-row {
+					display: flex;
+					align-items: center;
+					justify-content: space-between;
+					gap: 8px;
+				}
+				.jce-q-task-ng-title span,
+				.jce-q-task-ng-row span {
+					color: var(--jce-muted);
+					font-size: 11px;
+					font-weight: 800;
+				}
+				.jce-q-task-ng-title b,
+				.jce-q-task-ng-row b {
+					font-size: 12px;
+					font-weight: 850;
+				}
+				.jce-q-task-ng-row {
+					width: 100%;
+					min-height: 34px;
+					padding: 0 9px;
+					border: 1px solid var(--jce-line-soft);
+					border-radius: 8px;
+					background: #fff;
+					text-align: left;
+				}
+				.jce-q-task-ng-row.danger b { color: var(--jce-red); }
+				.jce-q-task-ng-row.warn b { color: var(--jce-orange); }
 				.jce-q-task-meta-grid {
 					display: grid;
 					grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -2829,6 +3065,48 @@ class QualityInspectionTerminal {
 				}
 				.jce-q-quick-actions .jce-q-small-button svg {
 					margin-right: 6px;
+				}
+				.jce-q-disposition-panel {
+					border-color: rgba(192, 31, 47, 0.14);
+				}
+				.jce-q-disposition-grid {
+					display: grid;
+					grid-template-columns: repeat(3, minmax(0, 1fr));
+					gap: 0;
+					border: 1px solid var(--jce-line-soft);
+					border-radius: 8px;
+					overflow: hidden;
+					background: #fff;
+				}
+				.jce-q-disposition-note {
+					margin-top: 8px;
+					padding: 8px 10px;
+					border: 1px solid var(--jce-line-soft);
+					border-radius: 8px;
+					background: #fff;
+				}
+				.jce-q-disposition-note span,
+				.jce-q-disposition-help {
+					color: var(--jce-muted);
+					font-size: 12px;
+					font-weight: 800;
+				}
+				.jce-q-disposition-note b {
+					display: block;
+					margin-top: 4px;
+					line-height: 1.4;
+					overflow-wrap: anywhere;
+				}
+				.jce-q-disposition-actions {
+					display: flex;
+					align-items: center;
+					justify-content: flex-end;
+					gap: 8px;
+					flex-wrap: wrap;
+					margin-top: 10px;
+				}
+				.jce-q-disposition-help {
+					margin-top: 10px;
 				}
 				.jce-q-alert-list {
 					display: grid;
@@ -3392,6 +3670,7 @@ class QualityInspectionTerminal {
 					.jce-q-info-grid,
 					.jce-q-sample-table,
 					.jce-q-result-controls,
+					.jce-q-disposition-grid,
 					.jce-q-defect-row { grid-template-columns: 1fr; }
 					.jce-q-system-result { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 					.jce-q-toolbar-actions .jce-q-bar-button { flex: 1 1 calc(50% - 8px); }
@@ -3567,6 +3846,11 @@ function current_user_label() {
 function format_local_datetime(date) {
 	const pad = (value) => String(value).padStart(2, "0");
 	return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function format_display_datetime(value) {
+	if (!value) return "-";
+	return frappe.datetime?.str_to_user ? frappe.datetime.str_to_user(value) : String(value);
 }
 
 function format_filename_datetime(date) {

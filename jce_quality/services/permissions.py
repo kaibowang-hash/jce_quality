@@ -9,6 +9,11 @@ QUALITY_EXECUTION_ROLES = ("System Manager", "Quality Manager", "Quality User")
 QUALITY_ANALYTICS_ROLES = ("System Manager", "Quality Manager", "Manufacturing Manager")
 QUALITY_DISPOSITION_ROLES = ("System Manager", "Quality Manager")
 DMR_STOCK_ROLES = ("Stock Manager", "Stock User")
+TERMINAL_ACTION_DEFAULT_ROLES = {
+	"Temporary Continue": ("System Manager", "Quality Manager", "Quality User"),
+	"Disposition": ("System Manager", "Quality Manager"),
+	"Concession Approval": ("System Manager", "Quality Manager"),
+}
 
 
 def require_quality_read_access():
@@ -24,15 +29,52 @@ def require_quality_analytics_access():
 
 
 def require_quality_disposition_access():
-	_require_any_role(QUALITY_DISPOSITION_ROLES)
+	require_terminal_action_access("Disposition")
 
 
 def has_quality_disposition_access() -> bool:
-	return _has_any_role(QUALITY_DISPOSITION_ROLES)
+	return has_terminal_action_access("Disposition")
 
 
 def has_quality_release_approval_access() -> bool:
-	return _has_any_role(("System Manager", "Quality Manager"))
+	return has_terminal_action_access("Concession Approval")
+
+
+def require_terminal_action_access(action: str):
+	if has_terminal_action_access(action):
+		return
+
+	frappe.throw(_("Not permitted to perform this terminal action."), frappe.PermissionError)
+
+
+def has_terminal_action_access(action: str) -> bool:
+	return _has_any_role(get_terminal_action_roles(action))
+
+
+def get_terminal_action_roles(action: str) -> tuple[str, ...]:
+	default_roles = TERMINAL_ACTION_DEFAULT_ROLES.get(action) or QUALITY_DISPOSITION_ROLES
+	if not frappe.db.exists("DocType", "JCE Quality Settings"):
+		return tuple(default_roles)
+
+	try:
+		settings_meta = frappe.get_meta("JCE Quality Settings")
+	except Exception:
+		return tuple(default_roles)
+
+	if not settings_meta.has_field("terminal_action_roles"):
+		return tuple(default_roles)
+
+	try:
+		settings = frappe.get_single("JCE Quality Settings")
+	except Exception:
+		return tuple(default_roles)
+
+	roles = [
+		row.role
+		for row in (settings.get("terminal_action_roles") or [])
+		if row.get("action") == action and row.get("role")
+	]
+	return tuple(dict.fromkeys(roles)) or tuple(default_roles)
 
 
 def require_dmr_stock_transfer_access():

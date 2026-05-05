@@ -54,7 +54,7 @@ function set_disposition(frm) {
 				fieldname: "disposition",
 				fieldtype: "Select",
 				label: __("Disposition"),
-				options: "\nRework\nScrap\nConcession Release",
+				options: "\nTemporary Continue\nStop Production\nRework\nScrap\nConcession Release",
 				reqd: 1,
 				default: frm.doc.disposition,
 			},

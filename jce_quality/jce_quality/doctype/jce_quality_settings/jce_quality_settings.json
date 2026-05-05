@@ -5,10 +5,12 @@
  "engine": "InnoDB",
  "field_order": [
   "warehouse_settings",
+  "terminal_action_roles",
   "default_template_suspension_role"
  ],
  "fields": [
   {"fieldname": "warehouse_settings", "fieldtype": "Table", "label": "Warehouse Settings", "options": "JCE Quality Warehouse Setting"},
+  {"fieldname": "terminal_action_roles", "fieldtype": "Table", "label": "Terminal Action Roles", "options": "JCE Quality Terminal Action Role"},
   {"default": "Quality Manager", "fieldname": "default_template_suspension_role", "fieldtype": "Link", "label": "Default Template Suspension Role", "options": "Role"}
  ],
  "issingle": 1,

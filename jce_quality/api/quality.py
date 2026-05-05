@@ -17,6 +17,7 @@ from jce_quality.services.quality import (
 	get_template_sample_plan,
 	get_rule_max_defect_rate,
 	validate_quality_gate_for_scheduling,
+	is_production_blocking_ng,
 )
 from jce_quality.services.dmr import confirm_ipqc_defect as confirm_ipqc_defect_doc
 from jce_quality.services.template_baseline import get_template_payload
@@ -25,10 +26,12 @@ from jce_quality.services.permissions import (
 	check_doctype_document_permission,
 	has_quality_disposition_access,
 	has_quality_release_approval_access,
+	has_terminal_action_access,
 	require_quality_analytics_access,
 	require_quality_disposition_access,
 	require_quality_execution_access,
 	require_quality_read_access,
+	require_terminal_action_access,
 )
 
 
@@ -88,12 +91,12 @@ def get_or_create_check(work_order_scheduling, scheduling_item, quality_node):
 			"docstatus": 1,
 			"overall_status": "Rejected",
 		},
-		pluck="name",
+		fields=["name", "docstatus", "overall_status", "disposition"],
 		order_by="modified desc",
-		limit_page_length=1,
 	)
-	if rejected:
-		return get_check_payload(rejected[0])
+	for check in rejected:
+		if is_production_blocking_ng(check):
+			return get_check_payload(check.name)
 
 	existing = frappe.get_all(
 		"Production Quality Check",
@@ -118,6 +121,7 @@ def get_or_create_check(work_order_scheduling, scheduling_item, quality_node):
 				"scheduling_item": scheduling_item,
 				"quality_node": quality_node,
 				"docstatus": ("<", 2),
+				"overall_status": ("!=", "Rejected"),
 			},
 			pluck="name",
 			order_by="modified desc",
@@ -147,6 +151,7 @@ def get_check_payload(check_name):
 	payload["defect_summary"] = build_defect_summary(doc)
 	payload["related_defect_alerts"] = get_related_defect_alerts(doc)
 	payload["terminal_permissions"] = {
+		"can_temporary_continue": has_terminal_action_access("Temporary Continue") or has_quality_disposition_access(),
 		"can_disposition": has_quality_disposition_access(),
 		"can_approve_concession": has_quality_release_approval_access(),
 	}
@@ -183,17 +188,18 @@ def save_check(
 	if doc.docstatus:
 		photos = _parse_json_list(defect_photos)
 		if (
-			(inspection_photo is not None or photos)
+			(inspection_photo is not None or photos or remarks is not None)
 			and readings is None
 			and sample_manager is None
 			and manual_inspection is None
 			and overall_status is None
-			and remarks is None
 			and defects is None
 			and inspection_stage is None
 			and inspection_sample_qty is None
 			and sample_readings is None
 		):
+			if remarks is not None:
+				doc.db_set("remarks", remarks, update_modified=not (inspection_photo is not None or photos))
 			if inspection_photo is not None:
 				doc.db_set("inspection_photo", inspection_photo, update_modified=False)
 			if photos:
@@ -270,8 +276,15 @@ def submit_check(check_name, readings=None, **kwargs):
 
 @frappe.whitelist(methods=["POST"])
 def set_disposition(check_name, disposition, remarks=None):
-	require_quality_disposition_access()
+	action = "Temporary Continue" if disposition == "Temporary Continue" else "Disposition"
+	if action == "Temporary Continue":
+		if not (has_terminal_action_access("Temporary Continue") or has_quality_disposition_access()):
+			require_terminal_action_access("Temporary Continue")
+	else:
+		require_terminal_action_access(action)
 	doc = frappe.get_doc("Production Quality Check", check_name)
+	if action == "Temporary Continue" and doc.get("disposition") and doc.get("disposition") != "Temporary Continue":
+		require_terminal_action_access("Disposition")
 	check_document_permission(doc, "write")
 	mark_disposition(doc, disposition, remarks)
 	return get_check_payload(check_name)
@@ -279,7 +292,7 @@ def set_disposition(check_name, disposition, remarks=None):
 
 @frappe.whitelist(methods=["POST"])
 def approve_concession_release(check_name):
-	require_quality_disposition_access()
+	require_terminal_action_access("Concession Approval")
 	doc = frappe.get_doc("Production Quality Check", check_name)
 	check_document_permission(doc, "write")
 	approve_concession_release_doc(doc)
