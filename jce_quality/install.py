@@ -2,7 +2,11 @@ import frappe
 
 from jce_quality.services.customizations import ensure_standard_customizations
 from jce_quality.services.indexes import ensure_quality_indexes
-from jce_quality.services.permissions import ensure_quality_gate_direct_override_role
+from jce_quality.services.permissions import (
+	ensure_quality_gate_direct_override_role,
+	ensure_quality_report_roles,
+	ensure_quality_role_permissions,
+)
 from jce_quality.services.template_baseline import migrate_quality_checklist_data
 from jce_quality.services.workflows import ensure_quality_workflows
 
@@ -16,6 +20,8 @@ def after_install():
 	ensure_standard_customizations()
 	ensure_quality_indexes()
 	ensure_quality_gate_direct_override_role()
+	ensure_quality_report_roles()
+	ensure_quality_role_permissions()
 	ensure_quality_workflows()
 	frappe.clear_cache()
 
@@ -24,5 +30,7 @@ def after_migrate():
 	ensure_standard_customizations()
 	ensure_quality_indexes()
 	ensure_quality_gate_direct_override_role()
+	ensure_quality_report_roles()
+	ensure_quality_role_permissions()
 	ensure_quality_workflows()
 	frappe.clear_cache()

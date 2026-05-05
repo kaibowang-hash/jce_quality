@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from collections import defaultdict
 from contextlib import contextmanager
+from urllib.parse import urlencode
 
 import frappe
 from frappe import _
@@ -18,6 +20,11 @@ from jce_quality.services.template_baseline import apply_template_to_check
 
 
 QUALITY_NODES = ("First Article", "Patrol", "Last Article", "Final Release")
+SHIPPING_QUALITY_NODE = "OQC"
+ALL_QUALITY_NODES = (*QUALITY_NODES, SHIPPING_QUALITY_NODE)
+PRODUCTION_SOURCE_TYPE = "Production Scheduling"
+MANUAL_PRODUCTION_SOURCE_TYPE = "Manual Production"
+DELIVERY_NOTE_OQC_SOURCE_TYPE = "Delivery Note OQC"
 READING_TEMPLATE_METADATA_FIELDS = ("inspection_method", "inspection_standard")
 PASSING_STATUSES = ("Accepted", "Concession Released")
 TEMPORARY_CONTINUE_DISPOSITION = "Temporary Continue"
@@ -33,6 +40,12 @@ SCHEDULING_ITEM_STATUS_FIELDS = {
 	"Last Article": "jce_quality_last_article_status",
 	"Final Release": "jce_quality_final_release_status",
 }
+FIRST_ARTICLE_FLAG_FIELDS = (
+	"custom_is_first_article",
+	"jce_quality_is_first_article",
+	"first_article_required",
+	"is_first_article",
+)
 _UNSET = object()
 
 
@@ -60,6 +73,10 @@ def populate_check_from_scheduling(doc):
 	if row.parent != scheduling.name:
 		frappe.throw(_("Scheduling Item {0} does not belong to Work Order Scheduling {1}.").format(row.name, scheduling.name))
 
+	doc.source_type = doc.get("source_type") or PRODUCTION_SOURCE_TYPE
+	doc.source_doctype = "Work Order Scheduling"
+	doc.source_name = scheduling.name
+	doc.source_detail = row.name
 	doc.company = getattr(scheduling, "company", None)
 	doc.posting_date = getattr(scheduling, "posting_date", None)
 	doc.shift_type = getattr(scheduling, "shift_type", None)
@@ -74,6 +91,26 @@ def populate_check_from_scheduling(doc):
 	doc.defect_qty = flt(getattr(row, "defect_qty", 0))
 	doc.mold = get_work_order_mold(doc.work_order)
 
+	apply_rule_to_check(doc)
+	apply_template_to_check(doc)
+
+
+def populate_manual_check_defaults(doc):
+	if doc.get("source_type") not in (MANUAL_PRODUCTION_SOURCE_TYPE, DELIVERY_NOTE_OQC_SOURCE_TYPE):
+		return
+
+	if not doc.get("posting_date"):
+		doc.posting_date = today()
+	if doc.get("item_code"):
+		item = frappe.db.get_value("Item", doc.item_code, ["item_name", "item_group", "stock_uom"], as_dict=True)
+		if item:
+			doc.item_name = item.item_name
+			doc.item_group = item.item_group
+			if not doc.get("uom") and doc.meta.has_field("uom"):
+				doc.uom = item.stock_uom
+	if doc.get("manual_qty") and not flt(doc.get("scheduling_qty")):
+		doc.scheduling_qty = flt(doc.manual_qty)
+		doc.completed_qty = flt(doc.manual_qty)
 	apply_rule_to_check(doc)
 	apply_template_to_check(doc)
 
@@ -251,15 +288,50 @@ def get_quality_requirements(scheduling_doc, row, item_group=None, rules_by_node
 
 
 def get_required_check_count(rule, node: str, scheduling_row=None) -> int:
-	if rule and not cint(rule.is_mandatory):
+	if not rule or not cint(rule_get(rule, "is_mandatory")):
+		return 0
+
+	if node == "First Article" and not is_first_article_required_for_row(scheduling_row):
 		return 0
 
 	if node == "Patrol":
-		required_count = cint(rule.minimum_patrol_count) if rule else 1
+		required_count = cint(rule_get(rule, "minimum_patrol_count")) if rule else 1
 		required_count = required_count if required_count > 0 else 1
 		return required_count + get_extra_patrol_count(scheduling_row)
 
 	return 1
+
+
+def get_required_quality_nodes(requirements: dict | None) -> list[str]:
+	requirements = requirements or {}
+	return [node for node in QUALITY_NODES if cint(requirements.get(node))]
+
+
+def is_first_article_required_for_row(scheduling_row=None) -> bool:
+	if not scheduling_row:
+		return False
+	return bool(cint(get_first_article_flag_value(scheduling_row)))
+
+
+def get_first_article_flag_value(scheduling_row=None):
+	if not scheduling_row:
+		return 0
+	for fieldname in FIRST_ARTICLE_FLAG_FIELDS:
+		if hasattr(scheduling_row, "get"):
+			value = scheduling_row.get(fieldname)
+		else:
+			value = getattr(scheduling_row, fieldname, None)
+		if value is not None:
+			return value
+	return 0
+
+
+def rule_get(rule, fieldname, default=None):
+	if not rule:
+		return default
+	if hasattr(rule, "get"):
+		return rule.get(fieldname, default)
+	return getattr(rule, fieldname, default)
 
 
 def get_extra_patrol_count(scheduling_row=None) -> int:
@@ -1010,6 +1082,7 @@ def _get_quality_gate_messages_for_scheduling(
 	work_order_scheduling: str,
 	bypass_doc=None,
 	used_bypass_names: set[str] | None = None,
+	bypass_context: dict | None = None,
 ):
 	doc = get_scheduling_doc(work_order_scheduling)
 	messages = []
@@ -1031,7 +1104,7 @@ def _get_quality_gate_messages_for_scheduling(
 			checks_by_row_node=checks_by_row_node,
 		)
 		if row_messages and bypass_doc and not has_rejected_quality_blocker_for_row(row.name):
-			bypass_names = get_quality_gate_bypass_names_for_row(bypass_doc, doc, row)
+			bypass_names = get_quality_gate_bypass_names_for_row(bypass_doc, doc, row, bypass_context=bypass_context)
 			if bypass_names:
 				if used_bypass_names is not None:
 					used_bypass_names.update(bypass_names)
@@ -1130,11 +1203,13 @@ def validate_stock_entry_quality_gate(doc, method=None):
 
 	messages = []
 	used_bypass_names = set()
+	bypass_context = get_quality_gate_bypass_context(doc)
 	for work_order_scheduling in work_order_schedulings:
 		scheduling_messages = _get_quality_gate_messages_for_scheduling(
 			work_order_scheduling,
 			bypass_doc=doc,
 			used_bypass_names=used_bypass_names,
+			bypass_context=bypass_context,
 		)
 		if not scheduling_messages:
 			continue
@@ -1252,11 +1327,11 @@ def mark_quality_gate_bypass_used(doc, work_order_scheduling: str | None = None)
 		frappe.db.set_value("Quality Gate Bypass", name, "status", "Used", update_modified=True)
 
 
-def get_quality_gate_bypass_names_for_row(stock_entry, scheduling_doc, row) -> list[str]:
+def get_quality_gate_bypass_context(stock_entry) -> dict:
 	if not frappe.db.exists("DocType", "Quality Gate Bypass"):
-		return []
+		return {}
 	company = stock_entry.get("company")
-	names = set(
+	stock_entry_names = set(
 		frappe.get_all(
 			"Quality Gate Bypass",
 			filters={
@@ -1268,9 +1343,6 @@ def get_quality_gate_bypass_names_for_row(stock_entry, scheduling_doc, row) -> l
 			pluck="name",
 		)
 	)
-	if not stock_entry_contains_item(stock_entry, row.get("item_code")):
-		return sorted(names)
-
 	candidates = frappe.get_all(
 		"Quality Gate Bypass",
 		filters={"status": "Approved", "company": company},
@@ -1283,8 +1355,51 @@ def get_quality_gate_bypass_names_for_row(stock_entry, scheduling_doc, row) -> l
 			"item_code",
 			"qty",
 		],
-		limit_page_length=100,
+		limit_page_length=500,
 	)
+	return {"stock_entry_names": stock_entry_names, "candidates_by_company": {company: candidates}}
+
+
+def get_quality_gate_bypass_names_for_row(stock_entry, scheduling_doc, row, bypass_context: dict | None = None) -> list[str]:
+	if not frappe.db.exists("DocType", "Quality Gate Bypass"):
+		return []
+	company = stock_entry.get("company")
+	if bypass_context is not None:
+		names = set(bypass_context.get("stock_entry_names") or [])
+	else:
+		names = set(
+			frappe.get_all(
+				"Quality Gate Bypass",
+				filters={
+					"status": "Approved",
+					"reference_doctype": "Stock Entry",
+					"reference_name": stock_entry.name,
+					"company": company,
+				},
+				pluck="name",
+			)
+		)
+	if not stock_entry_contains_item(stock_entry, row.get("item_code")):
+		return sorted(names)
+
+	candidates = None
+	if bypass_context is not None:
+		candidates = (bypass_context.get("candidates_by_company") or {}).get(company)
+	if candidates is None:
+		candidates = frappe.get_all(
+			"Quality Gate Bypass",
+			filters={"status": "Approved", "company": company},
+			fields=[
+				"name",
+				"reference_doctype",
+				"reference_name",
+				"work_order_scheduling",
+				"scheduling_item",
+				"item_code",
+				"qty",
+			],
+			limit_page_length=100,
+		)
 	for bypass in candidates:
 		references_schedule = bypass.work_order_scheduling == scheduling_doc.name or (
 			bypass.reference_doctype == "Work Order Scheduling" and bypass.reference_name == scheduling_doc.name
@@ -1444,6 +1559,7 @@ def get_terminal_tasks(posting_date=None, plant_floor=None, shift_type=None, wor
 	]
 	scheduling_item_meta = frappe.get_meta("Scheduling Item")
 	for fieldname in (
+		*FIRST_ARTICLE_FLAG_FIELDS,
 		"jce_quality_alert_open",
 		"jce_quality_alert_source_check",
 		"jce_quality_alert_note",
@@ -1473,6 +1589,9 @@ def get_terminal_tasks(posting_date=None, plant_floor=None, shift_type=None, wor
 		item_group = item_group_map.get(row.item_code)
 		summary = summaries.get(row.name, _empty_quality_summary())
 		requirements = get_quality_requirements(schedule, row, item_group=item_group, rules_by_node=rules_by_node)
+		required_nodes = get_required_quality_nodes(requirements)
+		if not required_nodes:
+			continue
 		patrol_rule = get_applicable_rule(
 			company=schedule.company,
 			plant_floor=schedule.plant_floor,
@@ -1497,6 +1616,9 @@ def get_terminal_tasks(posting_date=None, plant_floor=None, shift_type=None, wor
 				**summary,
 				**patrol_info,
 				"work_order_scheduling": schedule.name,
+				"is_first_article": cint(get_first_article_flag_value(row)),
+				"quality_requirements": requirements,
+				"required_quality_nodes": required_nodes,
 				"first_article_required": requirements.get("First Article", 0),
 				"last_article_required": requirements.get("Last Article", 0),
 				"final_release_required": requirements.get("Final Release", 0),
@@ -1510,6 +1632,15 @@ def get_terminal_tasks(posting_date=None, plant_floor=None, shift_type=None, wor
 			}
 		)
 
+	tasks.sort(
+		key=lambda task: (
+			-1 if cint(task.get("first_article_required")) else 0,
+			get_datetime(task.get("from_time")) if task.get("from_time") else get_datetime(f"{task.get('posting_date')} 00:00:00"),
+			task.get("workstation") or "",
+			cint(task.get("idx")),
+			task.get("name") or "",
+		)
+	)
 	return tasks
 
 
@@ -1545,6 +1676,522 @@ def get_board_data(posting_date=None, plant_floor=None, shift_type=None):
 		"by_workstation": [{"workstation": key, **value} for key, value in by_workstation.items()],
 		"tasks": tasks,
 	}
+
+
+def create_manual_production_check(
+	item_code: str,
+	workstation: str,
+	quality_node: str = "Patrol",
+	company: str | None = None,
+	plant_floor: str | None = None,
+	shift_type: str | None = None,
+	posting_date: str | None = None,
+	qty: float | None = None,
+	remarks: str | None = None,
+) -> str:
+	if quality_node not in QUALITY_NODES:
+		frappe.throw(_("Manual production checks can only use production quality nodes."))
+	if not item_code or not workstation:
+		frappe.throw(_("Item Code and Workstation are required for manual production check."))
+	manual_qty = flt(qty)
+	if manual_qty <= 0:
+		frappe.throw(_("Manual production check quantity must be greater than zero."))
+
+	doc = frappe.new_doc("Production Quality Check")
+	doc.source_type = MANUAL_PRODUCTION_SOURCE_TYPE
+	doc.quality_node = quality_node
+	doc.company = company
+	doc.plant_floor = plant_floor
+	doc.shift_type = shift_type
+	doc.posting_date = posting_date or today()
+	doc.workstation = workstation
+	doc.item_code = item_code
+	doc.manual_qty = manual_qty
+	doc.scheduling_qty = manual_qty
+	doc.completed_qty = manual_qty
+	doc.remarks = remarks
+	populate_manual_check_defaults(doc)
+	ensure_check_node_is_required(doc)
+	load_template_readings(doc)
+	doc.check_permission("create")
+	doc.insert(ignore_permissions=True)
+	return doc.name
+
+
+def get_manual_production_quality_node_options(
+	item_code: str | None = None,
+	workstation: str | None = None,
+	company: str | None = None,
+	plant_floor: str | None = None,
+) -> list[dict]:
+	if not item_code or not workstation:
+		return []
+	item_group = frappe.db.get_value("Item", item_code, "item_group") if item_code else None
+	options = []
+	for node in QUALITY_NODES:
+		if node == "First Article":
+			continue
+		rule = get_applicable_rule(
+			company=company,
+			plant_floor=plant_floor,
+			workstation=workstation,
+			item_code=item_code,
+			item_group=item_group,
+			quality_node=node,
+		)
+		required_count = get_required_check_count(rule, node)
+		if not required_count:
+			continue
+		options.append(
+			{
+				"value": node,
+				"label": _(node),
+				"required_count": required_count,
+				"production_quality_rule": rule.name if rule else None,
+				"quality_inspection_template": rule.quality_inspection_template if rule else None,
+			}
+		)
+	return options
+
+
+def get_scheduling_quality_node_requirement(work_order_scheduling: str, scheduling_item: str, quality_node: str) -> dict:
+	if quality_node not in QUALITY_NODES:
+		frappe.throw(_("Invalid production quality node {0}.").format(quality_node))
+	scheduling_doc = get_scheduling_doc(work_order_scheduling)
+	scheduling_row = get_scheduling_item(scheduling_item)
+	if scheduling_row.parent != scheduling_doc.name:
+		frappe.throw(_("Scheduling Item {0} does not belong to Work Order Scheduling {1}.").format(scheduling_row.name, scheduling_doc.name))
+	item_group = frappe.db.get_value("Item", scheduling_row.item_code, "item_group") if scheduling_row.item_code else None
+	rule = get_applicable_rule(
+		company=scheduling_doc.company,
+		plant_floor=scheduling_doc.plant_floor,
+		workstation=scheduling_row.workstation,
+		item_code=scheduling_row.item_code,
+		item_group=item_group,
+		quality_node=quality_node,
+	)
+	required_count = get_required_check_count(rule, quality_node, scheduling_row=scheduling_row)
+	return {
+		"quality_node": quality_node,
+		"required_count": required_count,
+		"is_required": bool(required_count),
+		"production_quality_rule": rule.name if rule else None,
+		"is_mandatory": cint(rule_get(rule, "is_mandatory")) if rule else 0,
+		"is_first_article": is_first_article_required_for_row(scheduling_row),
+	}
+
+
+def ensure_check_node_is_required(doc):
+	rule = get_applicable_rule(
+		company=doc.get("company"),
+		plant_floor=doc.get("plant_floor"),
+		workstation=doc.get("workstation"),
+		item_code=doc.get("item_code"),
+		item_group=doc.get("item_group"),
+		quality_node=doc.get("quality_node"),
+	)
+	if not get_required_check_count(rule, doc.get("quality_node")):
+		frappe.throw(_("{0} is not configured as a mandatory production gate, so no inspection task is required.").format(_(doc.quality_node)))
+
+
+def get_delivery_oqc_items(delivery_note: str):
+	dn = get_delivery_note_doc(delivery_note, require_submitted=True, allow_return=False)
+	groups = build_delivery_oqc_groups(dn)
+	existing = get_delivery_oqc_checks_map(dn.name)
+	rows = []
+	for key, group in groups.items():
+		check = existing.get(key)
+		rows.append(
+			{
+				**group,
+				"delivery_note": dn.name,
+				"source_detail": key,
+				"check_name": check.name if check else None,
+				"overall_status": check.overall_status if check else "Pending",
+				"release_status": check.get("release_status") if check else "Pending",
+				"docstatus": check.docstatus if check else 0,
+			}
+		)
+	return rows
+
+
+def get_delivery_plan_delivery_notes(delivery_plan: str) -> list[dict]:
+	if not delivery_plan:
+		frappe.throw(_("Delivery Plan is required."))
+	if not frappe.db.exists("DocType", "Delivery Plan"):
+		frappe.throw(_("Delivery Plan is not available on this site."))
+	if not frappe.db.exists("Delivery Plan", delivery_plan):
+		frappe.throw(_("Delivery Plan {0} does not exist.").format(delivery_plan))
+	dn_meta = frappe.get_meta("Delivery Note")
+	if not dn_meta.has_field("delivery_plan"):
+		return []
+	filters = {"delivery_plan": delivery_plan, "docstatus": 1}
+	if dn_meta.has_field("is_return"):
+		filters["is_return"] = 0
+	return frappe.get_list(
+		"Delivery Note",
+		filters=filters,
+		fields=["name", "posting_date", "customer", "company", "status", "docstatus"],
+		order_by="posting_date desc, modified desc",
+		limit_page_length=50,
+	)
+
+
+def get_or_create_delivery_oqc_check(
+	delivery_note: str,
+	item_code: str,
+	warehouse: str | None = None,
+	uom: str | None = None,
+) -> str:
+	dn = get_delivery_note_doc(delivery_note, require_submitted=True, allow_return=False)
+	groups = build_delivery_oqc_groups(dn)
+	key = make_delivery_oqc_group_key(item_code, warehouse, uom)
+	group = groups.get(key)
+	if not group:
+		frappe.throw(_("No Delivery Note item found for {0}.").format(item_code))
+
+	existing = get_delivery_oqc_checks_map(dn.name).get(key)
+	if existing:
+		return existing.name
+
+	doc = frappe.new_doc("Production Quality Check")
+	doc.source_type = DELIVERY_NOTE_OQC_SOURCE_TYPE
+	doc.source_doctype = "Delivery Note"
+	doc.source_name = dn.name
+	doc.source_detail = key
+	doc.source_group_key = dn.name
+	doc.source_rows = json.dumps(group.get("source_rows") or [], default=str)
+	doc.quality_node = SHIPPING_QUALITY_NODE
+	doc.company = dn.company
+	doc.customer = dn.get("customer") if doc.meta.has_field("customer") else None
+	doc.posting_date = dn.get("posting_date") or today()
+	doc.item_code = group.get("item_code")
+	doc.item_name = group.get("item_name")
+	doc.uom = group.get("uom")
+	doc.workstation = None
+	doc.scheduling_qty = group.get("qty")
+	doc.completed_qty = group.get("qty")
+	doc.manual_qty = group.get("qty")
+	populate_manual_check_defaults(doc)
+	ensure_check_node_is_required(doc)
+	load_template_readings(doc)
+	doc.check_permission("create")
+	doc.insert(ignore_permissions=True)
+	return doc.name
+
+
+def release_oqc_check(
+	check_name: str,
+	release_status: str = "Released",
+	temporary_release_note: str | None = None,
+	escalate_to_dmr: bool = False,
+) -> dict:
+	doc = frappe.get_doc("Production Quality Check", check_name)
+	validate_oqc_release_request(doc, release_status, temporary_release_note, escalate_to_dmr)
+	doc.db_set("release_status", release_status, update_modified=False)
+	if temporary_release_note is not None:
+		doc.db_set("temporary_release_note", temporary_release_note.strip(), update_modified=False)
+	dmr_name = doc.get("escalated_dmr")
+	if escalate_to_dmr and not dmr_name:
+		if doc.docstatus != 1 or doc.overall_status != "Rejected":
+			frappe.throw(_("Submit a rejected OQC check before escalating to DMR."))
+		from jce_quality.services.dmr import make_dmr_from_source
+
+		dmr_name = make_dmr_from_source("Production Quality Check", doc.name, dmr_type="OQC")
+		doc.db_set("escalated_dmr", dmr_name, update_modified=False)
+		if doc.meta.has_field("dmr"):
+			doc.db_set("dmr", dmr_name, update_modified=False)
+	return {"check_name": doc.name, "release_status": release_status, "dmr": dmr_name}
+
+
+def validate_oqc_release_request(
+	doc,
+	release_status: str = "Released",
+	temporary_release_note: str | None = None,
+	escalate_to_dmr: bool = False,
+) -> None:
+	if doc.get("source_type") != DELIVERY_NOTE_OQC_SOURCE_TYPE:
+		frappe.throw(_("Only Delivery Note OQC checks can be released here."))
+	if release_status not in ("Pending", "Released", "Temporary Released", "Blocked"):
+		frappe.throw(_("Invalid OQC release status {0}.").format(release_status))
+	if doc.docstatus != 1:
+		frappe.throw(_("Submit the OQC check before changing release status."))
+
+	if release_status in ("Released", "Temporary Released"):
+		if doc.overall_status not in PASSING_STATUSES:
+			frappe.throw(_("Only accepted or concession released OQC checks can be released."))
+		if release_status == "Temporary Released" and not (temporary_release_note or "").strip():
+			frappe.throw(_("Temporary Release Note is required for temporary release."))
+
+	if release_status == "Blocked" and doc.overall_status != "Rejected":
+		frappe.throw(_("Only rejected OQC checks can be blocked."))
+
+	if escalate_to_dmr and doc.overall_status != "Rejected":
+		frappe.throw(_("Only rejected OQC checks can be escalated to DMR."))
+
+
+def get_oqc_email_package(
+	delivery_note: str,
+	include_print_urls: bool = True,
+	ignore_check_permissions: bool = False,
+) -> dict:
+	dn = get_delivery_note_doc(delivery_note, require_submitted=True, allow_return=False)
+	expected_groups = build_delivery_oqc_groups(dn)
+	get_checks = frappe.get_all if ignore_check_permissions else frappe.get_list
+	checks = get_checks(
+		"Production Quality Check",
+		filters={
+			"source_type": DELIVERY_NOTE_OQC_SOURCE_TYPE,
+			"source_doctype": "Delivery Note",
+			"source_name": dn.name,
+			"docstatus": ("<", 2),
+		},
+		fields=[
+			"name",
+			"item_code",
+			"item_name",
+			"uom",
+			"scheduling_qty",
+			"source_detail",
+			"docstatus",
+			"overall_status",
+			"release_status",
+			"quality_node",
+			"modified",
+		],
+		order_by="item_code asc, name asc",
+	)
+	print_format = get_quality_print_format("OQC", "Production Quality Check")
+	rows = []
+	for check in checks:
+		item = dict(check)
+		item["ready"] = is_oqc_check_ready_for_email(check)
+		item["print_format"] = print_format
+		cached_file = get_cached_oqc_pdf_file(check.name, check.modified, print_format)
+		item["cached_pdf"] = cached_file
+		if include_print_urls:
+			item["print_url"] = get_print_url("Production Quality Check", check.name, print_format)
+		rows.append(item)
+	ready_keys = {
+		row.get("source_detail")
+		for row in rows
+		if row.get("source_detail") and row.get("ready")
+	}
+	missing_groups = [
+		{**group, "source_detail": key}
+		for key, group in expected_groups.items()
+		if key not in ready_keys
+	]
+	ready = bool(expected_groups) and not missing_groups
+	return {
+		"delivery_note": dn.name,
+		"customer": dn.get("customer"),
+		"company": dn.get("company"),
+		"posting_date": dn.get("posting_date"),
+		"delivery_group_key": dn.name,
+		"print_format": print_format,
+		"checks": rows,
+		"missing_items": missing_groups,
+		"ready": ready,
+		"send_allowed": ready,
+		"manual_confirmation_required": True,
+	}
+
+
+def enqueue_oqc_pdf_cache(delivery_note: str, ignore_check_permissions: bool = False):
+	get_delivery_note_doc(delivery_note, require_submitted=True, allow_return=False)
+	return frappe.enqueue(
+		"jce_quality.services.quality.cache_oqc_pdfs",
+		queue="short",
+		delivery_note=delivery_note,
+		ignore_check_permissions=ignore_check_permissions,
+	)
+
+
+def cache_oqc_pdfs(delivery_note: str, ignore_check_permissions: bool = False):
+	package = get_oqc_email_package(
+		delivery_note,
+		include_print_urls=False,
+		ignore_check_permissions=ignore_check_permissions,
+	)
+	for check in package.get("checks", []):
+		if check.get("cached_pdf"):
+			continue
+		create_cached_oqc_pdf(
+			check.get("name"),
+			check.get("modified"),
+			check.get("print_format"),
+			ignore_permissions=ignore_check_permissions,
+		)
+	return get_oqc_email_package(
+		delivery_note,
+		include_print_urls=False,
+		ignore_check_permissions=ignore_check_permissions,
+	)
+
+
+def is_oqc_check_ready_for_email(check) -> bool:
+	return (
+		cint(check.get("docstatus")) == 1
+		and check.get("overall_status") in PASSING_STATUSES
+		and check.get("release_status") == "Released"
+	)
+
+
+def get_cached_oqc_pdf_file(check_name: str, modified=None, print_format: str | None = None) -> str | None:
+	file_name = get_cached_oqc_pdf_filename(check_name, modified, print_format)
+	return frappe.db.get_value(
+		"File",
+		{
+			"attached_to_doctype": "Production Quality Check",
+			"attached_to_name": check_name,
+			"file_name": file_name,
+			"is_folder": 0,
+		},
+		"file_url",
+	)
+
+
+def create_cached_oqc_pdf(
+	check_name: str,
+	modified=None,
+	print_format: str | None = None,
+	ignore_permissions: bool = False,
+) -> str:
+	if not check_name:
+		return ""
+	check_doc = frappe.get_doc("Production Quality Check", check_name)
+	if not ignore_permissions:
+		check_doc.check_permission("read")
+	file_name = get_cached_oqc_pdf_filename(check_name, modified, print_format)
+	if existing := get_cached_oqc_pdf_file(check_name, modified, print_format):
+		return existing
+	previous_ignore_print_permissions = getattr(frappe.local.flags, "ignore_print_permissions", False)
+	frappe.local.flags.ignore_print_permissions = True
+	try:
+		pdf_content = frappe.get_print(
+			"Production Quality Check",
+			check_name,
+			print_format or "Standard",
+			as_pdf=True,
+		)
+	finally:
+		frappe.local.flags.ignore_print_permissions = previous_ignore_print_permissions
+	file_doc = frappe.get_doc(
+		{
+			"doctype": "File",
+			"file_name": file_name,
+			"attached_to_doctype": "Production Quality Check",
+			"attached_to_name": check_name,
+			"is_private": 1,
+			"content": pdf_content,
+		}
+	)
+	file_doc.save(ignore_permissions=True)
+	return file_doc.file_url
+
+
+def get_cached_oqc_pdf_filename(check_name: str, modified=None, print_format: str | None = None) -> str:
+	key = hashlib.sha1(f"{check_name}|{modified}|{print_format or 'Standard'}".encode()).hexdigest()[:10]
+	return f"OQC-{check_name}-{key}.pdf"
+
+
+def get_delivery_note_doc(delivery_note: str, require_submitted: bool = False, allow_return: bool = True):
+	if not delivery_note:
+		frappe.throw(_("Delivery Note is required."))
+	if not frappe.db.exists("Delivery Note", delivery_note):
+		frappe.throw(_("Delivery Note {0} does not exist.").format(delivery_note))
+	dn = frappe.get_doc("Delivery Note", delivery_note)
+	if require_submitted and dn.docstatus != 1:
+		frappe.throw(_("Delivery Note {0} must be submitted before OQC.").format(delivery_note))
+	if not allow_return and cint(dn.get("is_return")):
+		frappe.throw(_("Return Delivery Note {0} cannot be used for OQC.").format(delivery_note))
+	return dn
+
+
+def build_delivery_oqc_groups(dn) -> dict[str, dict]:
+	groups = {}
+	for row in dn.get("items", []):
+		if not row.get("item_code"):
+			continue
+		qty = flt(row.get("qty") or row.get("stock_qty"))
+		if qty <= 0:
+			continue
+		key = make_delivery_oqc_group_key(row.item_code, row.get("warehouse"), row.get("uom") or row.get("stock_uom"))
+		group = groups.setdefault(
+			key,
+			{
+				"item_code": row.item_code,
+				"item_name": row.get("item_name"),
+				"warehouse": row.get("warehouse"),
+				"uom": row.get("uom") or row.get("stock_uom"),
+				"qty": 0,
+				"source_rows": [],
+			},
+		)
+		group["qty"] += qty
+		group["source_rows"].append(
+			{
+				"doctype": row.doctype,
+				"name": row.name,
+				"idx": row.idx,
+				"item_code": row.item_code,
+				"warehouse": row.get("warehouse"),
+				"uom": row.get("uom") or row.get("stock_uom"),
+				"qty": qty,
+				"sales_order": row.get("against_sales_order") or row.get("sales_order"),
+				"so_detail": row.get("so_detail"),
+			}
+		)
+	return groups
+
+
+def make_delivery_oqc_group_key(item_code: str, warehouse: str | None = None, uom: str | None = None) -> str:
+	return "||".join([item_code or "", warehouse or "", uom or ""])
+
+
+def get_delivery_oqc_checks_map(delivery_note: str) -> dict[str, frappe._dict]:
+	rows = frappe.get_all(
+		"Production Quality Check",
+		filters={
+			"source_type": DELIVERY_NOTE_OQC_SOURCE_TYPE,
+			"source_doctype": "Delivery Note",
+			"source_name": delivery_note,
+			"docstatus": ("<", 2),
+		},
+		fields=["name", "source_detail", "overall_status", "release_status", "docstatus", "modified"],
+		order_by="modified desc",
+	)
+	result = {}
+	for row in rows:
+		if row.source_detail and row.source_detail not in result:
+			result[row.source_detail] = row
+	return result
+
+
+def get_quality_print_format(inspection_context: str, doctype: str) -> str | None:
+	if not frappe.db.exists("DocType", "JCE Quality Settings"):
+		return None
+	settings_meta = frappe.get_meta("JCE Quality Settings")
+	if not settings_meta.has_field("print_format_mappings"):
+		return None
+	settings = frappe.get_single("JCE Quality Settings")
+	for row in settings.get("print_format_mappings", []):
+		if not cint(row.get("enabled", 1)):
+			continue
+		if row.get("inspection_context") == inspection_context and row.get("doctype_name") == doctype:
+			return row.get("print_format")
+	return None
+
+
+def get_print_url(doctype: str, name: str, print_format: str | None = None) -> str:
+	params = {
+		"doctype": doctype,
+		"name": name,
+		"format": print_format or "Standard",
+		"no_letterhead": 0,
+	}
+	return "/api/method/frappe.utils.print_format.download_pdf?" + urlencode(params)
 
 
 def mark_disposition(doc, disposition: str, remarks: str | None = None):
@@ -1583,7 +2230,7 @@ def get_defect_code_options(txt: str | None = None):
 	return frappe.get_all(
 		"Quality Defect Code",
 		filters=filters,
-		fields=["name", "defect_code", "defect_name", "category", "severity"],
+		fields=["name", "defect_code", "defect_name", "category", "severity", "description"],
 		order_by="defect_code asc",
 		limit_page_length=50,
 	)

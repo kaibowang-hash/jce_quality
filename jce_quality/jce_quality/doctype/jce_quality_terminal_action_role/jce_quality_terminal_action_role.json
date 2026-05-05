@@ -15,7 +15,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Action",
-   "options": "Temporary Continue\nDisposition\nConcession Approval",
+   "options": "Temporary Continue\nDisposition\nConcession Approval\nOQC Release\nOQC Temporary Release\nOQC Block\nOQC DMR Escalation\nOQC Email",
    "reqd": 1
   },
   {

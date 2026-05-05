@@ -51,7 +51,7 @@
   },
   {
    "label": "Quality Execution",
-   "link_count": 6,
+   "link_count": 7,
    "type": "Card Break"
   },
   {
@@ -76,6 +76,12 @@
    "label": "Quality Analytics",
    "link_to": "quality-analytics",
    "link_type": "Page",
+   "type": "Link"
+  },
+  {
+   "label": "Production Quality Execution Summary",
+   "link_to": "Production Quality Execution Summary",
+   "link_type": "Report",
    "type": "Link"
   },
   {

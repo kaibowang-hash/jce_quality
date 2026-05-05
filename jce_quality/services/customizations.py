@@ -29,11 +29,18 @@ STANDARD_CUSTOM_FIELDS = {
 			"collapsible": 1,
 		},
 		{
+			"fieldname": "custom_is_first_article",
+			"label": "First Article Required",
+			"fieldtype": "Check",
+			"insert_after": "jce_quality_section",
+			"in_list_view": 1,
+		},
+		{
 			"fieldname": "jce_quality_first_article_status",
 			"label": "First Article Status",
 			"fieldtype": "Select",
 			"options": "\nPending\nAccepted\nRejected\nConcession Released",
-			"insert_after": "jce_quality_section",
+			"insert_after": "custom_is_first_article",
 			"read_only": 1,
 		},
 		{
@@ -402,6 +409,38 @@ STANDARD_CUSTOM_FIELDS = {
 			"options": "DMR",
 			"insert_after": "system_overall_status",
 			"read_only": 1,
+		},
+	],
+	"Stock Entry": [
+		{
+			"fieldname": "custom_reference_section",
+			"label": "JCE Quality Reference",
+			"fieldtype": "Section Break",
+			"insert_after": "posting_time",
+			"collapsible": 1,
+		},
+		{
+			"fieldname": "custom_reference_doctype",
+			"label": "Reference DocType",
+			"fieldtype": "Data",
+			"insert_after": "custom_reference_section",
+			"read_only": 1,
+		},
+		{
+			"fieldname": "custom_reference_name",
+			"label": "Reference Document",
+			"fieldtype": "Data",
+			"insert_after": "custom_reference_doctype",
+			"read_only": 1,
+			"search_index": 1,
+		},
+		{
+			"fieldname": "custom_reference_number",
+			"label": "Reference Number",
+			"fieldtype": "Data",
+			"insert_after": "custom_reference_name",
+			"read_only": 1,
+			"search_index": 1,
 		},
 	],
 }

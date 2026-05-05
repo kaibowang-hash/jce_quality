@@ -15,6 +15,12 @@
   "inspection_finished_at",
   "inspected_by",
   "source_section",
+  "source_type",
+  "source_doctype",
+  "source_name",
+  "source_detail",
+  "source_group_key",
+  "source_rows",
   "work_order_scheduling",
   "scheduling_item",
   "work_order",
@@ -22,6 +28,7 @@
   "item_code",
   "item_name",
   "item_group",
+  "uom",
   "column_break_source",
   "posting_date",
   "shift_type",
@@ -31,6 +38,8 @@
   "scheduling_qty",
   "completed_qty",
   "defect_qty",
+  "manual_qty",
+  "customer",
   "standard_section",
   "production_quality_rule",
   "quality_inspection_template",
@@ -56,6 +65,9 @@
   "release_approved",
   "release_approved_by",
   "release_approved_at",
+  "release_status",
+  "temporary_release_note",
+  "escalated_dmr",
   "remarks",
   "attachments_section",
   "inspection_photo",
@@ -87,7 +99,7 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Quality Node",
-   "options": "\nFirst Article\nPatrol\nLast Article\nFinal Release",
+   "options": "\nFirst Article\nPatrol\nLast Article\nFinal Release\nOQC",
    "reqd": 1
   },
   {
@@ -126,7 +138,45 @@
   {
    "fieldname": "source_section",
    "fieldtype": "Section Break",
-   "label": "Production Batch"
+   "label": "Source"
+  },
+  {
+   "default": "Production Scheduling",
+   "fieldname": "source_type",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Source Type",
+   "options": "Production Scheduling\nManual Production\nDelivery Note OQC"
+  },
+  {
+   "fieldname": "source_doctype",
+   "fieldtype": "Select",
+   "label": "Source DocType",
+   "options": "\nWork Order Scheduling\nDelivery Note"
+  },
+  {
+   "fieldname": "source_name",
+   "fieldtype": "Dynamic Link",
+   "in_standard_filter": 1,
+   "label": "Source Document",
+   "options": "source_doctype"
+  },
+  {
+   "fieldname": "source_detail",
+   "fieldtype": "Data",
+   "label": "Source Detail",
+   "search_index": 1
+  },
+  {
+   "fieldname": "source_group_key",
+   "fieldtype": "Data",
+   "label": "Source Group Key",
+   "search_index": 1
+  },
+  {
+   "fieldname": "source_rows",
+   "fieldtype": "Long Text",
+   "label": "Source Rows"
   },
   {
    "fieldname": "work_order_scheduling",
@@ -134,14 +184,12 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Work Order Scheduling",
-   "options": "Work Order Scheduling",
-   "reqd": 1
+   "options": "Work Order Scheduling"
   },
   {
    "fieldname": "scheduling_item",
    "fieldtype": "Data",
    "label": "Scheduling Item Row",
-   "reqd": 1,
    "search_index": 1
   },
   {
@@ -182,6 +230,12 @@
    "label": "Item Group",
    "options": "Item Group",
    "read_only": 1
+  },
+  {
+   "fieldname": "uom",
+   "fieldtype": "Link",
+   "label": "UOM",
+   "options": "UOM"
   },
   {
    "fieldname": "column_break_source",
@@ -240,6 +294,17 @@
    "fieldtype": "Float",
    "label": "Defect Qty",
    "read_only": 1
+  },
+  {
+   "fieldname": "manual_qty",
+   "fieldtype": "Float",
+   "label": "Manual / OQC Qty"
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "Customer",
+   "options": "Customer"
   },
   {
    "fieldname": "standard_section",
@@ -395,6 +460,29 @@
    "fieldname": "release_approved_at",
    "fieldtype": "Datetime",
    "label": "Approved At",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "default": "Pending",
+   "fieldname": "release_status",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "OQC Release Status",
+   "options": "Pending\nReleased\nTemporary Released\nBlocked"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "temporary_release_note",
+   "fieldtype": "Small Text",
+   "label": "Temporary Release Note"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "escalated_dmr",
+   "fieldtype": "Link",
+   "label": "Escalated DMR",
+   "options": "DMR",
    "read_only": 1
   },
   {

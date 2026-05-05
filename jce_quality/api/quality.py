@@ -4,9 +4,16 @@ from frappe.utils import now_datetime
 
 from jce_quality.services.quality import (
 	approve_concession_release as approve_concession_release_doc,
+	create_manual_production_check as create_manual_production_check_doc,
 	get_board_data,
 	get_defect_code_options as get_defect_code_option_rows,
+	get_delivery_plan_delivery_notes as get_delivery_plan_delivery_note_rows,
+	get_delivery_oqc_items as get_delivery_oqc_item_rows,
+	get_manual_production_quality_node_options as get_manual_production_quality_node_option_rows,
+	get_oqc_email_package as get_oqc_email_package_doc,
+	get_or_create_delivery_oqc_check as get_or_create_delivery_oqc_check_doc,
 	get_quality_analytics_data as get_quality_analytics_data_rows,
+	get_scheduling_quality_node_requirement,
 	get_terminal_tasks,
 	get_work_order_scheduling_summary,
 	inspect_and_set_status,
@@ -19,6 +26,8 @@ from jce_quality.services.quality import (
 	validate_quality_gate_for_scheduling,
 	is_production_blocking_ng,
 	get_patrol_history_context,
+	enqueue_oqc_pdf_cache,
+	release_oqc_check as release_oqc_check_doc,
 )
 from jce_quality.services.dmr import confirm_ipqc_defect as confirm_ipqc_defect_doc
 from jce_quality.services.template_baseline import get_template_payload
@@ -83,6 +92,9 @@ def validate_scheduling_quality_gate(work_order_scheduling):
 def get_or_create_check(work_order_scheduling, scheduling_item, quality_node):
 	require_quality_execution_access()
 	check_doctype_document_permission("Work Order Scheduling", work_order_scheduling, "read")
+	requirement = get_scheduling_quality_node_requirement(work_order_scheduling, scheduling_item, quality_node)
+	if not requirement.get("is_required"):
+		frappe.throw(_("{0} is not required for this scheduling item.").format(_(quality_node)))
 	rejected = frappe.get_all(
 		"Production Quality Check",
 		filters={
@@ -141,6 +153,106 @@ def get_or_create_check(work_order_scheduling, scheduling_item, quality_node):
 
 
 @frappe.whitelist()
+def get_manual_production_quality_node_options(item_code=None, workstation=None, company=None, plant_floor=None):
+	require_quality_read_access()
+	if item_code:
+		check_doctype_document_permission("Item", item_code, "read")
+	if workstation:
+		check_doctype_document_permission("Workstation", workstation, "read")
+	return get_manual_production_quality_node_option_rows(
+		item_code=item_code,
+		workstation=workstation,
+		company=company,
+		plant_floor=plant_floor,
+	)
+
+
+@frappe.whitelist(methods=["POST"])
+def create_manual_production_check(
+	item_code,
+	workstation,
+	quality_node="Patrol",
+	company=None,
+	plant_floor=None,
+	shift_type=None,
+	posting_date=None,
+	qty=None,
+	remarks=None,
+):
+	require_quality_execution_access()
+	check_name = create_manual_production_check_doc(
+		item_code=item_code,
+		workstation=workstation,
+		quality_node=quality_node,
+		company=company,
+		plant_floor=plant_floor,
+		shift_type=shift_type,
+		posting_date=posting_date,
+		qty=qty,
+		remarks=remarks,
+	)
+	return get_check_payload(check_name)
+
+
+@frappe.whitelist()
+def get_delivery_oqc_items(delivery_note):
+	require_quality_read_access()
+	check_doctype_document_permission("Delivery Note", delivery_note, "read")
+	return get_delivery_oqc_item_rows(delivery_note)
+
+
+@frappe.whitelist()
+def get_delivery_plan_delivery_notes(delivery_plan):
+	require_quality_read_access()
+	if not frappe.db.exists("DocType", "Delivery Plan"):
+		frappe.throw(_("Delivery Plan is not available on this site."))
+	check_doctype_document_permission("Delivery Plan", delivery_plan, "read")
+	return get_delivery_plan_delivery_note_rows(delivery_plan)
+
+
+@frappe.whitelist(methods=["POST"])
+def get_or_create_delivery_oqc_check(delivery_note, item_code, warehouse=None, uom=None):
+	require_quality_execution_access()
+	check_doctype_document_permission("Delivery Note", delivery_note, "read")
+	check_name = get_or_create_delivery_oqc_check_doc(delivery_note, item_code, warehouse=warehouse, uom=uom)
+	return get_check_payload(check_name)
+
+
+@frappe.whitelist(methods=["POST"])
+def release_oqc_check(check_name, release_status="Released", temporary_release_note=None, escalate_to_dmr=0):
+	action = get_oqc_release_action(release_status, bool(int(escalate_to_dmr or 0)))
+	require_terminal_action_access(action)
+	doc = frappe.get_doc("Production Quality Check", check_name)
+	check_document_permission(doc, "write")
+	result = release_oqc_check_doc(
+		check_name,
+		release_status=release_status,
+		temporary_release_note=temporary_release_note,
+		escalate_to_dmr=bool(int(escalate_to_dmr or 0)),
+	)
+	return result
+
+
+@frappe.whitelist()
+def get_oqc_email_package(delivery_note, include_print_urls=1):
+	require_oqc_email_access()
+	check_doctype_document_permission("Delivery Note", delivery_note, "read")
+	return get_oqc_email_package_doc(
+		delivery_note,
+		include_print_urls=bool(int(include_print_urls or 0)),
+		ignore_check_permissions=has_terminal_action_access("OQC Email"),
+	)
+
+
+@frappe.whitelist(methods=["POST"])
+def queue_oqc_pdf_cache(delivery_note):
+	require_oqc_email_access()
+	check_doctype_document_permission("Delivery Note", delivery_note, "read")
+	job = enqueue_oqc_pdf_cache(delivery_note, ignore_check_permissions=has_terminal_action_access("OQC Email"))
+	return {"delivery_note": delivery_note, "job_id": getattr(job, "id", None) or str(job)}
+
+
+@frappe.whitelist()
 def get_check_payload(check_name):
 	require_quality_read_access()
 	doc = frappe.get_doc("Production Quality Check", check_name)
@@ -162,8 +274,29 @@ def get_check_payload(check_name):
 		"can_temporary_continue": has_terminal_action_access("Temporary Continue") or has_quality_disposition_access(),
 		"can_disposition": has_quality_disposition_access(),
 		"can_approve_concession": has_quality_release_approval_access(),
+		"can_oqc_release": has_terminal_action_access("OQC Release"),
+		"can_oqc_temporary_release": has_terminal_action_access("OQC Temporary Release"),
+		"can_oqc_block": has_terminal_action_access("OQC Block"),
+		"can_oqc_escalate_to_dmr": has_terminal_action_access("OQC DMR Escalation"),
+		"can_oqc_email": has_terminal_action_access("OQC Email"),
 	}
 	return payload
+
+
+def get_oqc_release_action(release_status: str, escalate_to_dmr: bool = False) -> str:
+	if escalate_to_dmr:
+		return "OQC DMR Escalation"
+	if release_status == "Temporary Released":
+		return "OQC Temporary Release"
+	if release_status == "Blocked":
+		return "OQC Block"
+	return "OQC Release"
+
+
+def require_oqc_email_access():
+	if has_terminal_action_access("OQC Email"):
+		return
+	require_quality_read_access()
 
 
 @frappe.whitelist(methods=["POST"])
@@ -505,6 +638,7 @@ def get_related_defect_alerts(doc) -> list[dict]:
 					{
 						"defect_code": row.defect_code,
 						"defect_name": row.defect_name,
+						"description": row.get("description"),
 						"quantity": row.quantity,
 						"remarks": row.remarks,
 					}

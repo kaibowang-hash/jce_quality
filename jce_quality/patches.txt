@@ -5,3 +5,4 @@
 [post_model_sync]
 # Patches added in this section will be executed after doctypes are migrated
 jce_quality.patches.v0_0_1.add_quality_indexes
+jce_quality.patches.v0_0_1.backfill_dmr_defects

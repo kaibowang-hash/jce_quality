@@ -8,12 +8,89 @@ QUALITY_READ_ROLES = ("System Manager", "Quality Manager", "Quality User", "Manu
 QUALITY_EXECUTION_ROLES = ("System Manager", "Quality Manager", "Quality User")
 QUALITY_ANALYTICS_ROLES = ("System Manager", "Quality Manager", "Manufacturing Manager")
 QUALITY_DISPOSITION_ROLES = ("System Manager", "Quality Manager")
-DMR_STOCK_ROLES = ("Stock Manager", "Stock User")
 QUALITY_GATE_DIRECT_OVERRIDE_ROLE = "JCE Quality Gate Override"
+QUALITY_REPORT_ROLES = {
+	"Production Quality Execution Summary": (
+		"System Manager",
+		"Quality Manager",
+		"Quality User",
+		"Manufacturing Manager",
+		"Manufacturing User",
+	),
+}
+READ_ONLY_PERMISSIONS = {
+	"read": 1,
+	"print": 1,
+	"email": 1,
+	"report": 1,
+	"export": 1,
+	"share": 1,
+}
+PERMISSION_FLAG_FIELDS = (
+	"read",
+	"write",
+	"create",
+	"submit",
+	"cancel",
+	"delete",
+	"amend",
+	"print",
+	"email",
+	"report",
+	"export",
+	"share",
+	"import",
+	"select",
+)
+QUALITY_MANAGER_STOCK_ENTRY_PERMISSIONS = {
+	**READ_ONLY_PERMISSIONS,
+	"create": 1,
+	"write": 1,
+	"submit": 1,
+}
+QUALITY_ROLE_DOCTYPE_PERMISSIONS = {
+	"Delivery Note": {
+		"Quality Manager": READ_ONLY_PERMISSIONS,
+		"Quality User": READ_ONLY_PERMISSIONS,
+	},
+	"Delivery Plan": {
+		"Quality Manager": READ_ONLY_PERMISSIONS,
+		"Quality User": READ_ONLY_PERMISSIONS,
+	},
+	"Item": {
+		"Quality Manager": READ_ONLY_PERMISSIONS,
+		"Quality User": READ_ONLY_PERMISSIONS,
+	},
+	"Warehouse": {
+		"Quality Manager": READ_ONLY_PERMISSIONS,
+		"Quality User": READ_ONLY_PERMISSIONS,
+	},
+	"Work Order": {
+		"Quality Manager": READ_ONLY_PERMISSIONS,
+		"Quality User": READ_ONLY_PERMISSIONS,
+	},
+	"Work Order Scheduling": {
+		"Quality Manager": READ_ONLY_PERMISSIONS,
+		"Quality User": READ_ONLY_PERMISSIONS,
+	},
+	"Workstation": {
+		"Quality Manager": READ_ONLY_PERMISSIONS,
+		"Quality User": READ_ONLY_PERMISSIONS,
+	},
+	"Stock Entry": {
+		"Quality Manager": QUALITY_MANAGER_STOCK_ENTRY_PERMISSIONS,
+		"Quality User": READ_ONLY_PERMISSIONS,
+	},
+}
 TERMINAL_ACTION_DEFAULT_ROLES = {
 	"Temporary Continue": ("System Manager", "Quality Manager", "Quality User"),
 	"Disposition": ("System Manager", "Quality Manager"),
 	"Concession Approval": ("System Manager", "Quality Manager"),
+	"OQC Release": ("System Manager", "Quality Manager", "Quality User"),
+	"OQC Temporary Release": ("System Manager", "Quality Manager"),
+	"OQC Block": ("System Manager", "Quality Manager", "Quality User"),
+	"OQC DMR Escalation": ("System Manager", "Quality Manager"),
+	"OQC Email": ("System Manager", "Quality Manager", "Quality User", "Sales Manager", "Sales User"),
 }
 
 
@@ -94,6 +171,59 @@ def ensure_quality_gate_direct_override_role():
 	settings.save(ignore_permissions=True)
 
 
+def ensure_quality_report_roles():
+	for report_name, roles in QUALITY_REPORT_ROLES.items():
+		if not frappe.db.exists("Report", report_name):
+			continue
+
+		report = frappe.get_doc("Report", report_name)
+		existing_roles = {row.role for row in (report.get("roles") or []) if row.get("role")}
+		changed = False
+		for role in roles:
+			if role in existing_roles:
+				continue
+			report.append("roles", {"role": role})
+			changed = True
+		if changed:
+			report.save(ignore_permissions=True)
+
+
+def ensure_quality_role_permissions():
+	for doctype, role_permissions in QUALITY_ROLE_DOCTYPE_PERMISSIONS.items():
+		if not frappe.db.exists("DocType", doctype):
+			continue
+		for role, permissions in role_permissions.items():
+			if not frappe.db.exists("Role", role):
+				continue
+			ensure_doctype_role_permission(doctype, role, permissions)
+
+
+def ensure_doctype_role_permission(doctype: str, role: str, permissions: dict):
+	filters = {"parent": doctype, "parenttype": "DocType", "role": role, "permlevel": 0}
+	if perm_name := frappe.db.exists("DocPerm", filters):
+		perm = frappe.get_doc("DocPerm", perm_name)
+	else:
+		perm = frappe.new_doc("DocPerm")
+		perm.parent = doctype
+		perm.parenttype = "DocType"
+		perm.parentfield = "permissions"
+		perm.role = role
+		perm.permlevel = 0
+
+	changed = False
+	for fieldname in PERMISSION_FLAG_FIELDS:
+		value = 1 if permissions.get(fieldname) else 0
+		if perm.get(fieldname) == value:
+			continue
+		perm.set(fieldname, value)
+		changed = True
+
+	if perm.is_new():
+		perm.insert(ignore_permissions=True)
+	elif changed:
+		perm.save(ignore_permissions=True)
+
+
 def require_terminal_action_access(action: str):
 	if has_terminal_action_access(action):
 		return
@@ -138,11 +268,11 @@ def require_dmr_stock_transfer_access():
 	user_roles = set(frappe.get_roles())
 	if "System Manager" in user_roles:
 		return
-	if "Quality Manager" in user_roles and user_roles.intersection(DMR_STOCK_ROLES):
+	if "Quality Manager" in user_roles:
 		return
 
 	frappe.throw(
-		_("Only a Quality Manager with stock access can create DMR stock transfers."),
+		_("Only a Quality Manager can create DMR stock transfers."),
 		frappe.PermissionError,
 	)
 

@@ -3,6 +3,7 @@ frappe.ui.form.on("DMR", {
 		frm.page.set_title(__("DMR - Defect Material Report") + (frm.doc.name ? ` ${frm.doc.name}` : ""));
 		sync_source_doctype(frm);
 		sync_reinspection_items(frm);
+		set_stock_entry_queries(frm);
 		if (frm.doc.dmr_type === "Customer Complaint" && !frm.is_new()) {
 			if (frm.doc.customer_requirement === "Exchange") {
 				frm.add_custom_button(__("Print Exchange Order"), () => frm.print_doc(), __("Print"));
@@ -68,11 +69,8 @@ function can_create_stock_transfer(frm) {
 	if (frappe.user_roles.includes("System Manager")) {
 		return ["Pending Disposition", "Return Rejection Completed"].includes(frm.doc.status);
 	}
-	const has_stock_role = frappe.user_roles.includes("Stock User")
-		|| frappe.user_roles.includes("Stock Manager");
 	return ["Pending Disposition", "Return Rejection Completed"].includes(frm.doc.status)
-		&& frappe.user_roles.includes("Quality Manager")
-		&& has_stock_role;
+		&& frappe.user_roles.includes("Quality Manager");
 }
 
 function sync_source_doctype(frm, force = false) {
@@ -88,4 +86,22 @@ function sync_reinspection_items(frm) {
 		row.uom = row.uom || frm.doc.uom;
 	});
 	frm.refresh_field("reinspection_results");
+}
+
+function set_stock_entry_queries(frm) {
+	["first_exchange_stock_entry", "disposition_stock_entry"].forEach((fieldname) => {
+		frm.set_query(fieldname, () => {
+			const filters = {
+				docstatus: ["<", 2],
+				purpose: "Material Transfer",
+			};
+			if (frm.doc.company) {
+				filters.company = frm.doc.company;
+			}
+			if (frm.doc.name && frappe.meta.has_field("Stock Entry", "custom_reference_number")) {
+				filters.custom_reference_number = frm.doc.name;
+			}
+			return { filters };
+		});
+	});
 }

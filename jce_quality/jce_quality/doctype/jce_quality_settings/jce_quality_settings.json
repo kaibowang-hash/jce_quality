@@ -5,12 +5,18 @@
  "engine": "InnoDB",
  "field_order": [
   "warehouse_settings",
+  "reports_section",
+  "print_format_mappings",
+  "api_settings",
   "terminal_action_roles",
   "quality_gate_override_roles",
   "default_template_suspension_role"
  ],
  "fields": [
   {"fieldname": "warehouse_settings", "fieldtype": "Table", "label": "Warehouse Settings", "options": "JCE Quality Warehouse Setting"},
+  {"fieldname": "reports_section", "fieldtype": "Section Break", "label": "Reports / Integration"},
+  {"fieldname": "print_format_mappings", "fieldtype": "Table", "label": "Print Format Mappings", "options": "JCE Quality Print Format Mapping"},
+  {"fieldname": "api_settings", "fieldtype": "Table", "label": "API Settings", "options": "JCE Quality API Setting"},
   {"fieldname": "terminal_action_roles", "fieldtype": "Table", "label": "Terminal Action Roles", "options": "JCE Quality Terminal Action Role"},
   {"fieldname": "quality_gate_override_roles", "fieldtype": "Table", "label": "Direct Quality Gate Override Roles", "options": "JCE Quality Gate Override Role"},
   {"default": "Quality Manager", "fieldname": "default_template_suspension_role", "fieldtype": "Link", "label": "Default Template Suspension Role", "options": "Role"}
@@ -23,7 +29,8 @@
  "owner": "Administrator",
  "permissions": [
   {"create": 1, "delete": 1, "email": 1, "print": 1, "read": 1, "role": "System Manager", "share": 1, "write": 1},
-  {"create": 1, "email": 1, "print": 1, "read": 1, "role": "Quality Manager", "share": 1, "write": 1}
+  {"create": 1, "email": 1, "print": 1, "read": 1, "role": "Quality Manager", "share": 1, "write": 1},
+  {"email": 1, "print": 1, "read": 1, "role": "Quality User", "share": 1}
  ],
  "sort_field": "modified",
  "sort_order": "DESC"

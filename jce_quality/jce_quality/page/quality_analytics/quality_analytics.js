@@ -41,7 +41,7 @@ class QualityAnalytics {
 			{ fieldname: "dimension", label: __("Dimension"), fieldtype: "Select", options: "workstation\nitem_code\nmold", default: this.filters.dimension },
 			{ fieldname: "plant_floor", label: __("Plant Floor"), fieldtype: "Link", options: "Plant Floor", default: this.filters.plant_floor },
 			{ fieldname: "shift_type", label: __("Shift"), fieldtype: "Select", options: get_shift_options(), default: this.filters.shift_type },
-			{ fieldname: "quality_node", label: __("Quality Node"), fieldtype: "Select", options: "\nFirst Article\nPatrol\nLast Article\nFinal Release", default: this.filters.quality_node },
+			{ fieldname: "quality_node", label: __("Quality Node"), fieldtype: "Select", options: "\nFirst Article\nPatrol\nLast Article\nFinal Release\nOQC", default: this.filters.quality_node },
 			{ fieldname: "only_ng", label: __("Only NG"), fieldtype: "Check", default: this.filters.only_ng },
 		];
 		fields.forEach((df) => {
