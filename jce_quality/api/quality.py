@@ -23,6 +23,8 @@ from jce_quality.services.template_baseline import get_template_payload
 from jce_quality.services.permissions import (
 	check_document_permission,
 	check_doctype_document_permission,
+	has_quality_disposition_access,
+	has_quality_release_approval_access,
 	require_quality_analytics_access,
 	require_quality_disposition_access,
 	require_quality_execution_access,
@@ -144,6 +146,10 @@ def get_check_payload(check_name):
 	payload["patrol_increase_blocked"] = bool(payload.get("extra_patrol_source_check") == doc.name)
 	payload["defect_summary"] = build_defect_summary(doc)
 	payload["related_defect_alerts"] = get_related_defect_alerts(doc)
+	payload["terminal_permissions"] = {
+		"can_disposition": has_quality_disposition_access(),
+		"can_approve_concession": has_quality_release_approval_access(),
+	}
 	return payload
 
 

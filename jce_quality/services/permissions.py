@@ -27,6 +27,14 @@ def require_quality_disposition_access():
 	_require_any_role(QUALITY_DISPOSITION_ROLES)
 
 
+def has_quality_disposition_access() -> bool:
+	return _has_any_role(QUALITY_DISPOSITION_ROLES)
+
+
+def has_quality_release_approval_access() -> bool:
+	return _has_any_role(("System Manager", "Quality Manager"))
+
+
 def require_dmr_stock_transfer_access():
 	if frappe.session.user == "Administrator":
 		return
@@ -56,11 +64,13 @@ def check_doctype_document_permission(doctype: str, name: str, permtype: str):
 
 
 def _require_any_role(allowed_roles: tuple[str, ...]):
-	if frappe.session.user == "Administrator":
-		return
-
-	user_roles = set(frappe.get_roles())
-	if user_roles.intersection(allowed_roles):
+	if _has_any_role(allowed_roles):
 		return
 
 	frappe.throw(_("Not permitted to access production quality data."), frappe.PermissionError)
+
+
+def _has_any_role(allowed_roles: tuple[str, ...]) -> bool:
+	if frappe.session.user == "Administrator":
+		return True
+	return bool(set(frappe.get_roles()).intersection(allowed_roles))
