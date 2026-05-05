@@ -1798,9 +1798,20 @@ def get_delivery_oqc_items(delivery_note: str):
 	dn = get_delivery_note_doc(delivery_note, require_submitted=True, allow_return=False)
 	groups = build_delivery_oqc_groups(dn)
 	existing = get_delivery_oqc_checks_map(dn.name)
+	item_group_map = get_item_group_map([group.get("item_code") for group in groups.values()])
+	oqc_rules = get_enabled_quality_rules(SHIPPING_QUALITY_NODE)
 	rows = []
 	for key, group in groups.items():
 		check = existing.get(key)
+		rule = get_applicable_rule(
+			company=dn.company,
+			plant_floor=None,
+			workstation=None,
+			item_code=group.get("item_code"),
+			item_group=item_group_map.get(group.get("item_code")),
+			quality_node=SHIPPING_QUALITY_NODE,
+			rules=oqc_rules,
+		)
 		rows.append(
 			{
 				**group,
@@ -1810,9 +1821,57 @@ def get_delivery_oqc_items(delivery_note: str):
 				"overall_status": check.overall_status if check else "Pending",
 				"release_status": check.get("release_status") if check else "Pending",
 				"docstatus": check.docstatus if check else 0,
+				"production_quality_rule": rule.name if rule else None,
+				"quality_inspection_template": rule.quality_inspection_template if rule else None,
+				"oqc_rule_mandatory": cint(rule.is_mandatory) if rule else 0,
+				"manual_allowed": 1,
 			}
 		)
 	return rows
+
+
+def get_delivery_oqc_delivery_notes(
+	from_date: str | None = None,
+	to_date: str | None = None,
+	customer: str | None = None,
+	delivery_note: str | None = None,
+	delivery_plan: str | None = None,
+	limit: int = 100,
+) -> list[dict]:
+	if not frappe.db.exists("DocType", "Delivery Note"):
+		return []
+
+	dn_meta = frappe.get_meta("Delivery Note")
+	filters = {"docstatus": 1}
+	if dn_meta.has_field("is_return"):
+		filters["is_return"] = 0
+	if delivery_note:
+		filters["name"] = delivery_note
+	if customer:
+		filters["customer"] = customer
+	if delivery_plan:
+		if not dn_meta.has_field("delivery_plan"):
+			return []
+		filters["delivery_plan"] = delivery_plan
+	if from_date and to_date:
+		filters["posting_date"] = ("between", [getdate(from_date), getdate(to_date)])
+	elif from_date:
+		filters["posting_date"] = (">=", getdate(from_date))
+	elif to_date:
+		filters["posting_date"] = ("<=", getdate(to_date))
+
+	fields = ["name", "posting_date", "customer", "company", "status", "docstatus"]
+	for fieldname in ("delivery_plan", "grand_total", "currency"):
+		if dn_meta.has_field(fieldname):
+			fields.append(fieldname)
+
+	return frappe.get_list(
+		"Delivery Note",
+		filters=filters,
+		fields=fields,
+		order_by="posting_date desc, modified desc",
+		limit_page_length=cint(limit) or 100,
+	)
 
 
 def get_delivery_plan_delivery_notes(delivery_plan: str) -> list[dict]:
@@ -1873,7 +1932,6 @@ def get_or_create_delivery_oqc_check(
 	doc.completed_qty = group.get("qty")
 	doc.manual_qty = group.get("qty")
 	populate_manual_check_defaults(doc)
-	ensure_check_node_is_required(doc)
 	load_template_readings(doc)
 	doc.check_permission("create")
 	doc.insert(ignore_permissions=True)

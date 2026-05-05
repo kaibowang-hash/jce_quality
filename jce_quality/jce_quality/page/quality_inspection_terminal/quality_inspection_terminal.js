@@ -9,6 +9,7 @@ frappe.pages["quality-inspection-terminal"].on_page_load = function (wrapper) {
 
 frappe.pages["quality-inspection-terminal"].on_page_show = function (wrapper) {
 	wrapper.quality_terminal?.update_fullscreen_class?.(true);
+	wrapper.quality_terminal?.handle_route_options?.();
 	wrapper.quality_terminal?.refresh();
 };
 
@@ -36,6 +37,7 @@ class QualityInspectionTerminal {
 			posting_date: frappe.datetime.get_today(),
 			plant_floor: "",
 			shift_type: "",
+			work_order_scheduling: "",
 		};
 		this.drawingWidth = this.get_stored_drawing_width();
 		this.drawing_state = {};
@@ -49,8 +51,11 @@ class QualityInspectionTerminal {
 		this.nativeFullscreenRequested = false;
 		this.defectControlCounter = 0;
 		this.ngActionDialogShown = new Set();
-		Object.assign(this.filters, clean_route_options(frappe.route_options || {}));
+		const routeOptions = clean_route_options(frappe.route_options || {});
 		frappe.route_options = null;
+		this.initialCheckName = routeOptions.check_name || "";
+		delete routeOptions.check_name;
+		this.apply_filter_route_options(routeOptions);
 		this.setup();
 	}
 
@@ -62,6 +67,43 @@ class QualityInspectionTerminal {
 		this.bind_fullscreen_change();
 		this.render_task_list_view();
 		this.load_defect_options();
+		if (this.initialCheckName) {
+			const checkName = this.initialCheckName;
+			this.initialCheckName = "";
+			this.open_check_by_name(checkName, null);
+		}
+	}
+
+	handle_route_options() {
+		const routeOptions = clean_route_options(frappe.route_options || {});
+		frappe.route_options = null;
+		if (!Object.keys(routeOptions).length) return false;
+		const checkName = routeOptions.check_name || "";
+		delete routeOptions.check_name;
+		this.apply_filter_route_options(routeOptions);
+		this.sync_filter_controls();
+		if (checkName) {
+			this.open_check_by_name(checkName, null);
+			return true;
+		}
+		return false;
+	}
+
+	apply_filter_route_options(options) {
+		const allowed = new Set(["posting_date", "plant_floor", "shift_type", "work_order_scheduling"]);
+		Object.keys(options || {}).forEach((fieldname) => {
+			if (allowed.has(fieldname)) {
+				this.filters[fieldname] = options[fieldname] || "";
+			}
+		});
+	}
+
+	sync_filter_controls() {
+		Object.entries(this.controls || {}).forEach(([fieldname, control]) => {
+			if (Object.prototype.hasOwnProperty.call(this.filters, fieldname)) {
+				control.set_value(this.filters[fieldname] || "");
+			}
+		});
 	}
 
 	refresh() {
@@ -166,7 +208,7 @@ class QualityInspectionTerminal {
 		this.body.find('[data-action="fullscreen"]').on("click", () => this.toggle_fullscreen());
 		this.body.find('[data-action="dismiss-pwa-hint"]').on("click", () => this.dismiss_pwa_hint());
 		this.body.find('[data-action="manual-check"]').on("click", () => this.open_manual_check_dialog());
-		this.body.find('[data-action="oqc-check"]').on("click", () => this.open_oqc_dialog());
+		this.body.find('[data-action="oqc-check"]').on("click", () => frappe.set_route("quality-oqc-terminal"));
 		this.render_filters();
 		this.render_tasks();
 	}
@@ -380,7 +422,7 @@ class QualityInspectionTerminal {
 			freeze: true,
 			freeze_message: __("Opening inspection..."),
 		}).then((r) => {
-			this.selectedTask = task || this.selectedTask;
+			this.selectedTask = task || null;
 			this.current = r.message;
 			this.enter_focus_mode();
 		}).catch((error) => {
