@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"id\":\"quality-control-header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Quality Control</b></span>\",\"col\":12}},{\"id\":\"shortcut-terminal\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Inspection Terminal\",\"col\":3}},{\"id\":\"shortcut-oqc-terminal\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"OQC Shipping Inspection\",\"col\":3}},{\"id\":\"shortcut-template\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Quality Inspection Template\",\"col\":3}},{\"id\":\"shortcut-dmr\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"DMR - Defect Material Report\",\"col\":3}},{\"id\":\"shortcut-check\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Production Quality Check\",\"col\":3}},{\"id\":\"shortcut-board\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Quality Board\",\"col\":3}},{\"id\":\"shortcut-analytics\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Quality Analytics\",\"col\":3}},{\"id\":\"shortcut-settings\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"JCE Quality Settings\",\"col\":3}},{\"id\":\"card-quality-master\",\"type\":\"card\",\"data\":{\"card_name\":\"Quality Master Data\",\"col\":4}},{\"id\":\"card-quality-execution\",\"type\":\"card\",\"data\":{\"card_name\":\"Quality Execution\",\"col\":4}},{\"id\":\"card-quality-nonconformance\",\"type\":\"card\",\"data\":{\"card_name\":\"Nonconformance\",\"col\":4}},{\"id\":\"card-quality-control\",\"type\":\"card\",\"data\":{\"card_name\":\"Quality Gate\",\"col\":4}},{\"id\":\"card-quality-standard\",\"type\":\"card\",\"data\":{\"card_name\":\"ERPNext Standards\",\"col\":4}}]",
+ "content": "[{\"id\":\"quality-control-header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Quality Control</b></span>\",\"col\":12}},{\"id\":\"shortcut-terminal\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Inspection Terminal\",\"col\":3}},{\"id\":\"shortcut-template\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Quality Inspection Template\",\"col\":3}},{\"id\":\"shortcut-dmr\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"DMR - Defect Material Report\",\"col\":3}},{\"id\":\"shortcut-check\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Production Quality Check\",\"col\":3}},{\"id\":\"shortcut-board\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Quality Board\",\"col\":3}},{\"id\":\"shortcut-analytics\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Quality Analytics\",\"col\":3}},{\"id\":\"shortcut-settings\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"JCE Quality Settings\",\"col\":3}},{\"id\":\"card-quality-master\",\"type\":\"card\",\"data\":{\"card_name\":\"Quality Master Data\",\"col\":4}},{\"id\":\"card-quality-execution\",\"type\":\"card\",\"data\":{\"card_name\":\"Quality Execution\",\"col\":4}},{\"id\":\"card-quality-nonconformance\",\"type\":\"card\",\"data\":{\"card_name\":\"Nonconformance\",\"col\":4}},{\"id\":\"card-quality-control\",\"type\":\"card\",\"data\":{\"card_name\":\"Quality Gate\",\"col\":4}},{\"id\":\"card-quality-standard\",\"type\":\"card\",\"data\":{\"card_name\":\"ERPNext Standards\",\"col\":4}}]",
  "custom_blocks": [],
  "doctype": "Workspace",
  "for_user": "",
@@ -51,7 +51,7 @@
   },
   {
    "label": "Quality Execution",
-   "link_count": 8,
+   "link_count": 7,
    "type": "Card Break"
   },
   {
@@ -63,12 +63,6 @@
   {
    "label": "Inspection Terminal",
    "link_to": "quality-inspection-terminal",
-   "link_type": "Page",
-   "type": "Link"
-  },
-  {
-   "label": "OQC Shipping Inspection",
-   "link_to": "quality-oqc-terminal",
    "link_type": "Page",
    "type": "Link"
   },
@@ -162,13 +156,6 @@
    "doc_view": "",
    "label": "Inspection Terminal",
    "link_to": "quality-inspection-terminal",
-   "type": "Page"
-  },
-  {
-   "color": "Orange",
-   "doc_view": "",
-   "label": "OQC Shipping Inspection",
-   "link_to": "quality-oqc-terminal",
    "type": "Page"
   },
   {
