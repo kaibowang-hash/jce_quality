@@ -13,6 +13,7 @@ from erpnext.stock.doctype.quality_inspection_template.quality_inspection_templa
 	get_template_details,
 )
 
+from jce_quality.services.permissions import has_quality_gate_direct_override_access
 from jce_quality.services.template_baseline import apply_template_to_check
 
 
@@ -692,7 +693,12 @@ def quality_check_creation_lock(scheduling_item: str, node: str):
 			frappe.db.sql("select release_lock(%s)", (lock_name,))
 
 
-def make_quality_checks(work_order_scheduling: str, scheduling_item: str | None = None, nodes: list[str] | None = None):
+def make_quality_checks(
+	work_order_scheduling: str,
+	scheduling_item: str | None = None,
+	nodes: list[str] | None = None,
+	limit_per_node: int | None = None,
+):
 	doc = get_scheduling_doc(work_order_scheduling)
 	nodes = nodes or list(QUALITY_NODES)
 	created = []
@@ -713,6 +719,8 @@ def make_quality_checks(work_order_scheduling: str, scheduling_item: str | None 
 					item_group=item_group_map.get(row.item_code),
 					rules_by_node=rules_by_node,
 				)
+				if limit_per_node is not None:
+					missing_count = min(missing_count, max(cint(limit_per_node), 0))
 				for _idx in range(missing_count):
 					check = frappe.new_doc("Production Quality Check")
 					check.quality_node = node
@@ -756,6 +764,76 @@ def get_missing_check_count(scheduling_doc, scheduling_row, node: str, item_grou
 		if cint(check.docstatus) == 0 or (cint(check.docstatus) == 1 and check.overall_status in PASSING_STATUSES)
 	)
 	return max(required_count - existing, 0)
+
+
+def get_patrol_required_count_for_check(doc) -> int:
+	if not doc.get("work_order_scheduling") or not doc.get("scheduling_item"):
+		return 0
+	scheduling_doc = get_scheduling_doc(doc.work_order_scheduling)
+	scheduling_row = get_scheduling_item(doc.scheduling_item)
+	item_group = frappe.db.get_value("Item", scheduling_row.item_code, "item_group") if scheduling_row.item_code else None
+	rule = get_applicable_rule(
+		company=scheduling_doc.company,
+		plant_floor=scheduling_doc.plant_floor,
+		workstation=scheduling_row.workstation,
+		item_code=scheduling_row.item_code,
+		item_group=item_group,
+		quality_node="Patrol",
+	)
+	return get_required_check_count(rule, "Patrol", scheduling_row=scheduling_row)
+
+
+def get_patrol_history_context(doc) -> dict:
+	if doc.get("quality_node") != "Patrol" or not (doc.get("work_order_scheduling") and doc.get("scheduling_item")):
+		return {"patrol_history": [], "patrol_sequence_no": 0, "patrol_required_count": 0}
+
+	history = frappe.get_all(
+		"Production Quality Check",
+		filters={
+			"work_order_scheduling": doc.work_order_scheduling,
+			"scheduling_item": doc.scheduling_item,
+			"quality_node": "Patrol",
+			"docstatus": ("<", 2),
+		},
+		fields=[
+			"name",
+			"docstatus",
+			"status",
+			"overall_status",
+			"system_overall_status",
+			"disposition",
+			"release_approved",
+			"inspection_started_at",
+			"inspection_finished_at",
+			"inspected_by",
+			"defect_sample_qty",
+			"defect_rate",
+			"inspection_sample_qty",
+			"creation",
+			"modified",
+		],
+		order_by="creation asc, name asc",
+	)
+	current_sequence = 0
+	for index, row in enumerate(history, start=1):
+		row["sequence_no"] = index
+		row["disposition_state"] = get_ng_disposition_state(row)
+		row["production_blocking"] = is_production_blocking_ng(row)
+		if row.name == doc.name:
+			current_sequence = index
+
+	return {
+		"patrol_history": history,
+		"patrol_sequence_no": current_sequence,
+		"patrol_required_count": get_patrol_required_count_for_check(doc),
+		"patrol_accepted_count": len(
+			[
+				row
+				for row in history
+				if cint(row.get("docstatus")) == 1 and row.get("overall_status") in PASSING_STATUSES
+			]
+		),
+	}
 
 
 def is_production_blocking_ng(check) -> bool:
@@ -896,14 +974,36 @@ def sync_scheduling_item_quality_status(scheduling_item: str | None):
 		frappe.db.set_value("Scheduling Item", scheduling_item, values, update_modified=False)
 
 
-def validate_quality_gate_for_scheduling(work_order_scheduling: str):
+def validate_quality_gate_for_scheduling(work_order_scheduling: str, allow_direct_override: bool = False) -> bool:
 	messages = get_quality_gate_messages_for_scheduling(work_order_scheduling)
-	if messages:
-		frappe.throw("<br>".join(messages), title=_("Quality Gate Not Passed"))
+	if not messages:
+		return False
+
+	if allow_direct_override and has_quality_gate_direct_override_access():
+		warn_quality_gate_direct_override(messages)
+		return True
+
+	frappe.throw("<br>".join(messages), title=_("Quality Gate Not Passed"))
 
 
 def get_quality_gate_messages_for_scheduling(work_order_scheduling: str):
 	return _get_quality_gate_messages_for_scheduling(work_order_scheduling)
+
+
+def warn_quality_gate_direct_override(messages: list[str]):
+	preview = list(messages or [])[:5]
+	remaining = max(len(messages or []) - len(preview), 0)
+	detail = "<br>".join(preview)
+	if remaining:
+		detail = f"{detail}<br>{_('And {0} more quality gate issue(s).').format(remaining)}"
+
+	message = _(
+		"Quality gate is not passed. This operation is allowed because your role is configured for direct quality gate override."
+	)
+	if detail:
+		message = f"{message}<br><br>{detail}"
+
+	frappe.msgprint(message, title=_("Quality Gate Override Warning"), indicator="orange")
 
 
 def _get_quality_gate_messages_for_scheduling(
@@ -1044,6 +1144,9 @@ def validate_stock_entry_quality_gate(doc, method=None):
 		frappe.db.set_value("Quality Gate Bypass", name, "status", "Used", update_modified=True)
 
 	if not messages:
+		return
+	if has_quality_gate_direct_override_access():
+		warn_quality_gate_direct_override(messages)
 		return
 	frappe.throw("<br>".join(messages), title=_("Quality Gate Not Passed"))
 

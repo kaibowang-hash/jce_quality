@@ -348,6 +348,52 @@ class QualityInspectionTerminal {
 		});
 	}
 
+	switch_patrol_history(direction) {
+		const history = this.current?.patrol_history || [];
+		if (!history.length) return;
+		const current_index = history.findIndex((row) => row.name === this.current.name);
+		const target = history[current_index + direction];
+		if (!target?.name) return;
+		this.open_check_by_name(target.name, this.selectedTask);
+	}
+
+	open_patrol_history_sheet() {
+		const history = this.current?.patrol_history || [];
+		if (!history.length) return;
+		this.open_terminal_sheet({
+			title: __("Patrol History"),
+			body: `
+				<div class="jce-q-patrol-history-list">
+					${history.map((row) => this.render_patrol_history_row(row)).join("")}
+				</div>
+			`,
+			on_action: (check_name) => {
+				this.close_terminal_sheet();
+				this.open_check_by_name(check_name, this.selectedTask);
+			},
+		});
+	}
+
+	render_patrol_history_row(row) {
+		const is_current = row.name === this.current?.name;
+		const tone = row.overall_status === "Rejected"
+			? "danger"
+			: row.disposition_state === "Temporary Continue"
+				? "warn"
+				: row.overall_status === "Accepted" || row.overall_status === "Concession Released"
+					? "ok"
+					: "";
+		const when = row.inspection_finished_at || row.inspection_started_at || row.creation || row.modified;
+		return `
+			<button type="button" class="jce-q-patrol-history-row ${tone} ${is_current ? "active" : ""}" data-sheet-action="${esc(row.name)}">
+				<span>${__("Patrol {0}", [cint(row.sequence_no) || "-"])}</span>
+				<b>${esc(inspection_status_label(row.overall_status || row.status || "Pending"))}</b>
+				<em>${esc(format_display_datetime(when))}</em>
+				<small>${esc(clean_value(row.defect_summary) || __(row.disposition_state || row.status || "Pending"))}</small>
+			</button>
+		`;
+	}
+
 	enter_focus_mode() {
 		this.mode = "focus";
 		this.drawerOpen = false;
@@ -416,8 +462,7 @@ class QualityInspectionTerminal {
 				<button class="jce-q-bar-button" data-action="save">${__("Save Draft")}</button>
 				<button class="jce-q-bar-button primary" data-action="submit">${__("Submit")}</button>
 				${this.fullscreen_toolbar_button()}`
-			: `${this.fullscreen_toolbar_button()}
-				<button class="jce-q-bar-button" data-action="open-form">${__("Open Form")}</button>`;
+			: `${this.fullscreen_toolbar_button()}`;
 
 		return `
 			<header class="jce-q-focus-toolbar">
@@ -463,6 +508,7 @@ class QualityInspectionTerminal {
 			${this.render_pwa_hint()}
 			${this.render_related_alert_banner(doc)}
 			${this.render_quick_actions(doc)}
+			${this.render_patrol_navigator(doc)}
 			${this.render_ng_disposition_panel(doc)}
 			${this.render_related_alerts(doc)}
 			<section class="jce-q-panel">
@@ -676,6 +722,35 @@ class QualityInspectionTerminal {
 		`;
 	}
 
+	render_patrol_navigator(doc) {
+		if (doc.quality_node !== "Patrol") return "";
+		const history = doc.patrol_history || [];
+		const sequence_no = cint(doc.patrol_sequence_no) || Math.max(1, history.findIndex((row) => row.name === doc.name) + 1);
+		const required_count = cint(doc.patrol_required_count) || Math.max(sequence_no, 1);
+		const current_index = history.findIndex((row) => row.name === doc.name);
+		const prev = current_index > 0 ? history[current_index - 1] : null;
+		const next = current_index >= 0 && current_index < history.length - 1 ? history[current_index + 1] : null;
+		return `
+			<section class="jce-q-panel jce-q-patrol-nav">
+				<div class="jce-q-patrol-nav-main">
+					<div>
+						<span>${__("Patrol Inspection")}</span>
+						<b>${__("Patrol {0} / {1}", [sequence_no, required_count])}</b>
+					</div>
+					<div class="jce-q-patrol-nav-actions">
+						<button class="jce-q-small-button icon" data-action="patrol-prev" ${prev ? "" : "disabled"} title="${__("Previous Patrol")}" aria-label="${__("Previous Patrol")}">${icon_html("chevron-left")}</button>
+						<button class="jce-q-small-button icon" data-action="patrol-history" title="${__("Patrol History")}" aria-label="${__("Patrol History")}">${icon_html("list")}</button>
+						<button class="jce-q-small-button icon" data-action="patrol-next" ${next ? "" : "disabled"} title="${__("Next Patrol")}" aria-label="${__("Next Patrol")}">${icon_html("chevron-right")}</button>
+					</div>
+				</div>
+				<div class="jce-q-patrol-nav-meta">
+					<span>${__("Passed Patrol")}: ${cint(doc.patrol_accepted_count ?? this.selectedTask?.patrol_count)} / ${required_count}</span>
+					<span>${__("History")}: ${history.length} ${__("items")}</span>
+				</div>
+			</section>
+		`;
+	}
+
 	render_ng_disposition_panel(doc) {
 		const should_show = doc.overall_status === "Rejected" || doc.overall_status === "Concession Released" || doc.disposition || cint(doc.release_approved);
 		if (!should_show) return "";
@@ -832,7 +907,9 @@ class QualityInspectionTerminal {
 		shell.find('[data-action="set-disposition"]').on("click", (event) => this.open_disposition_sheet(event.currentTarget.dataset.disposition));
 		shell.find('[data-action="approve-concession"]').on("click", () => this.approve_concession_release());
 		shell.find('[data-action="add-note"]').on("click", () => this.open_note_sheet());
-		shell.find('[data-action="open-form"]').on("click", () => frappe.set_route("Form", "Production Quality Check", this.current.name));
+		shell.find('[data-action="patrol-prev"]').on("click", () => this.switch_patrol_history(-1));
+		shell.find('[data-action="patrol-next"]').on("click", () => this.switch_patrol_history(1));
+		shell.find('[data-action="patrol-history"]').on("click", () => this.open_patrol_history_sheet());
 		shell.find('[data-action="attach"]').on("click", () => this.attach_photo());
 		shell.find('[data-action="add-defect"]').on("click", () => this.add_defect_row());
 		shell.find('[data-action="add-sample"]').on("click", () => this.add_sample_column());
@@ -3066,6 +3143,98 @@ class QualityInspectionTerminal {
 				.jce-q-quick-actions .jce-q-small-button svg {
 					margin-right: 6px;
 				}
+				.jce-q-patrol-nav-main {
+					display: flex;
+					align-items: center;
+					justify-content: space-between;
+					gap: 12px;
+				}
+				.jce-q-patrol-nav-main > div:first-child {
+					min-width: 0;
+				}
+				.jce-q-patrol-nav-main span {
+					display: block;
+					color: var(--jce-muted);
+					font-size: 11px;
+					font-weight: 800;
+					text-transform: uppercase;
+				}
+				.jce-q-patrol-nav-main b {
+					display: block;
+					margin-top: 2px;
+					font-size: 17px;
+					line-height: 1.2;
+				}
+				.jce-q-patrol-nav-actions {
+					display: inline-flex;
+					align-items: center;
+					justify-content: flex-end;
+					gap: 6px;
+					flex: 0 0 auto;
+				}
+				.jce-q-patrol-nav-actions button:disabled {
+					opacity: .42;
+					cursor: not-allowed;
+				}
+				.jce-q-patrol-nav-meta {
+					display: flex;
+					align-items: center;
+					gap: 10px;
+					flex-wrap: wrap;
+					margin-top: 8px;
+					color: var(--jce-muted);
+					font-size: 12px;
+					font-weight: 800;
+				}
+				.jce-q-patrol-history-list {
+					display: grid;
+					gap: 8px;
+				}
+				.jce-q-patrol-history-row {
+					display: grid;
+					grid-template-columns: 82px 64px minmax(112px, .8fr) minmax(0, 1.4fr);
+					gap: 8px;
+					align-items: center;
+					width: 100%;
+					min-height: 44px;
+					padding: 8px 10px;
+					border: 1px solid var(--jce-line-soft);
+					border-radius: 10px;
+					background: #fff;
+					text-align: left;
+				}
+				.jce-q-patrol-history-row.active {
+					border-color: rgba(0, 113, 227, .32);
+					box-shadow: 0 0 0 3px rgba(0, 113, 227, .10);
+				}
+				.jce-q-patrol-history-row span,
+				.jce-q-patrol-history-row b,
+				.jce-q-patrol-history-row em,
+				.jce-q-patrol-history-row small {
+					min-width: 0;
+					overflow: hidden;
+					text-overflow: ellipsis;
+					white-space: nowrap;
+				}
+				.jce-q-patrol-history-row span,
+				.jce-q-patrol-history-row em {
+					color: var(--jce-muted);
+					font-size: 12px;
+					font-style: normal;
+					font-weight: 800;
+				}
+				.jce-q-patrol-history-row b {
+					font-size: 13px;
+					font-weight: 850;
+				}
+				.jce-q-patrol-history-row small {
+					color: var(--jce-muted);
+					font-size: 12px;
+					font-weight: 700;
+				}
+				.jce-q-patrol-history-row.ok b { color: var(--jce-green); }
+				.jce-q-patrol-history-row.warn b { color: var(--jce-orange); }
+				.jce-q-patrol-history-row.danger b { color: var(--jce-red); }
 				.jce-q-disposition-panel {
 					border-color: rgba(192, 31, 47, 0.14);
 				}
@@ -3674,6 +3843,8 @@ class QualityInspectionTerminal {
 					.jce-q-defect-row { grid-template-columns: 1fr; }
 					.jce-q-system-result { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 					.jce-q-toolbar-actions .jce-q-bar-button { flex: 1 1 calc(50% - 8px); }
+					.jce-q-patrol-history-row { grid-template-columns: 72px 54px minmax(0, 1fr); }
+					.jce-q-patrol-history-row small { grid-column: 1 / -1; }
 					.jce-q-drawing-toolbar {
 						align-items: flex-start;
 						flex-direction: column;
