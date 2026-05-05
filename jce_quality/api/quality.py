@@ -8,6 +8,7 @@ from jce_quality.services.quality import (
 	get_board_data,
 	get_defect_code_options as get_defect_code_option_rows,
 	get_delivery_plan_delivery_notes as get_delivery_plan_delivery_note_rows,
+	get_delivery_oqc_delivery_notes as get_delivery_oqc_delivery_note_rows,
 	get_delivery_oqc_items as get_delivery_oqc_item_rows,
 	get_manual_production_quality_node_options as get_manual_production_quality_node_option_rows,
 	get_oqc_email_package as get_oqc_email_package_doc,
@@ -192,6 +193,22 @@ def create_manual_production_check(
 		remarks=remarks,
 	)
 	return get_check_payload(check_name)
+
+
+@frappe.whitelist()
+def get_delivery_oqc_delivery_notes(from_date=None, to_date=None, customer=None, delivery_note=None, delivery_plan=None):
+	require_quality_read_access()
+	if delivery_note:
+		check_doctype_document_permission("Delivery Note", delivery_note, "read")
+	if delivery_plan and frappe.db.exists("DocType", "Delivery Plan"):
+		check_doctype_document_permission("Delivery Plan", delivery_plan, "read")
+	return get_delivery_oqc_delivery_note_rows(
+		from_date=from_date,
+		to_date=to_date,
+		customer=customer,
+		delivery_note=delivery_note,
+		delivery_plan=delivery_plan,
+	)
 
 
 @frappe.whitelist()
