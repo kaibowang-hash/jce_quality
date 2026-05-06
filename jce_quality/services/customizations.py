@@ -411,6 +411,32 @@ STANDARD_CUSTOM_FIELDS = {
 			"read_only": 1,
 		},
 	],
+	"Delivery Plan Item Qty": [
+		{
+			"fieldname": "jce_quality_oqc_status",
+			"label": "OQC Status",
+			"fieldtype": "Select",
+			"options": "\nNot Started\nIn Progress\nAccepted\nRejected\nReleased\nBlocked\nTemporary Released",
+			"default": "Not Started",
+			"insert_after": "actual_delivered_qty",
+			"read_only": 1,
+			"in_list_view": 1,
+			"allow_on_submit": 1,
+		},
+	],
+	"Delivery Plan Item": [
+		{
+			"fieldname": "jce_quality_oqc_status",
+			"label": "OQC Status",
+			"fieldtype": "Select",
+			"options": "\nNot Started\nIn Progress\nAccepted\nRejected\nReleased\nBlocked\nTemporary Released",
+			"default": "Not Started",
+			"insert_after": "actual_delivered_qty",
+			"read_only": 1,
+			"in_list_view": 1,
+			"allow_on_submit": 1,
+		},
+	],
 	"Stock Entry": [
 		{
 			"fieldname": "custom_reference_section",
@@ -494,6 +520,7 @@ def ensure_standard_customizations(
 			]
 			for doctype, rows in STANDARD_CUSTOM_FIELDS.items()
 		}
+	fields = {doctype: rows for doctype, rows in fields.items() if frappe.db.exists("DocType", doctype)}
 	create_custom_fields(fields, update=True)
 	ensure_property_setters()
 	if cleanup:

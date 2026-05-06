@@ -22,6 +22,7 @@ const DRAWING_WIDTH_KEY = "jce_quality_terminal_drawing_width";
 const PDFJS_SRC = "/assets/jce_quality/vendor/pdfjs/pdf.min.js";
 const PDFJS_WORKER = "/assets/jce_quality/vendor/pdfjs/pdf.worker.min.js";
 const PRODUCTION_QUALITY_NODES = ["First Article", "Patrol", "Last Article", "Final Release"];
+const OQC_SOURCE_TYPES = ["Delivery Note OQC", "Delivery Plan OQC"];
 const JCE_TERMINAL_OQC_STATE_KEY = "jce_quality_terminal_oqc_filters";
 
 class QualityInspectionTerminal {
@@ -662,8 +663,13 @@ class QualityInspectionTerminal {
 			control.$input.on("change", () => {
 				this.oqcFilters[df.fieldname] = control.get_value() || "";
 				if (df.fieldname === "source_type") {
+					this.oqcFilters.delivery_note = "";
 					this.normalize_oqc_filters();
 					this.sync_oqc_controls();
+				}
+				if (df.fieldname === "delivery_plan") {
+					this.oqcFilters.delivery_note = "";
+					this.oqcControls.delivery_note?.set_value("");
 				}
 				if (df.fieldname === "delivery_note") {
 					this.select_oqc_delivery_note(control.get_value(), { refreshList: true });
@@ -699,6 +705,9 @@ class QualityInspectionTerminal {
 			this.render_oqc_items_empty(__("Select Delivery Plan."));
 			return Promise.resolve();
 		}
+		this.body.find(".jce-q-oqc-items-panel .jce-q-section-head b").text(
+			this.oqcFilters.delivery_note || this.oqcFilters.delivery_plan || __("Select Delivery Note.")
+		);
 		return frappe.call({
 			method: "jce_quality.api.quality.get_delivery_oqc_delivery_notes",
 			args: {
@@ -716,6 +725,9 @@ class QualityInspectionTerminal {
 			if (this.oqcFilters.delivery_note) {
 				return this.load_oqc_items(this.oqcFilters.delivery_note);
 			}
+			if (this.oqcFilters.source_type === "Delivery Plan" && this.oqcFilters.delivery_plan && !this.oqcDeliveryNotes.length) {
+				return this.load_delivery_plan_oqc_items(this.oqcFilters.delivery_plan);
+			}
 			this.render_oqc_items_empty(__("Select Delivery Note."));
 		}).catch((error) => {
 			console.error(error);
@@ -732,7 +744,10 @@ class QualityInspectionTerminal {
 		this.body.find(".jce-q-oqc-count").text(rows.length);
 		const list = this.body.find(".jce-q-oqc-delivery-list");
 		if (!rows.length) {
-			list.html(`<div class="jce-q-empty compact">${__("No Delivery Notes found.")}</div>`);
+			const message = this.oqcFilters.source_type === "Delivery Plan" && this.oqcFilters.delivery_plan
+				? __("No Delivery Notes linked. Showing Delivery Plan items.")
+				: __("No Delivery Notes found.");
+			list.html(`<div class="jce-q-empty compact">${message}</div>`);
 			return;
 		}
 		list.html(rows.map((row) => {
@@ -760,7 +775,16 @@ class QualityInspectionTerminal {
 		this.render_oqc_delivery_notes(this.oqcDeliveryNotes || []);
 		this.body.find(".jce-q-oqc-items-panel .jce-q-section-head b").text(this.oqcFilters.delivery_note || __("Select Delivery Note."));
 		if (!this.oqcFilters.delivery_note) {
-			this.render_oqc_items_empty(__("Select Delivery Note."));
+			if (
+				this.oqcFilters.source_type === "Delivery Plan"
+				&& this.oqcFilters.delivery_plan
+				&& !(this.oqcDeliveryNotes || []).length
+			) {
+				this.body.find(".jce-q-oqc-items-panel .jce-q-section-head b").text(this.oqcFilters.delivery_plan);
+				this.load_delivery_plan_oqc_items(this.oqcFilters.delivery_plan);
+			} else {
+				this.render_oqc_items_empty(__("Select Delivery Note."));
+			}
 			if (options.refreshList) this.refresh_oqc_delivery_notes();
 			return;
 		}
@@ -776,6 +800,23 @@ class QualityInspectionTerminal {
 		return frappe.call({
 			method: "jce_quality.api.quality.get_delivery_oqc_items",
 			args: { delivery_note: deliveryNote },
+			freeze: true,
+			freeze_message: __("Loading OQC Items..."),
+		}).then((r) => {
+			this.oqcItems = r.message || [];
+			this.render_oqc_items(this.oqcItems);
+		}).catch((error) => {
+			console.error(error);
+			this.render_oqc_items_empty(__("Unable to load OQC Items."));
+		});
+	}
+
+	load_delivery_plan_oqc_items(deliveryPlan) {
+		this.body.find(".jce-q-oqc-items-panel .jce-q-section-head b").text(deliveryPlan || __("Select Delivery Plan."));
+		this.body.find(".jce-q-oqc-items").html(`<div class="jce-q-empty compact">${__("Loading...")}</div>`);
+		return frappe.call({
+			method: "jce_quality.api.quality.get_delivery_plan_oqc_items",
+			args: { delivery_plan: deliveryPlan },
 			freeze: true,
 			freeze_message: __("Loading OQC Items..."),
 		}).then((r) => {
@@ -805,7 +846,10 @@ class QualityInspectionTerminal {
 		holder.find("[data-oqc-open]").on("click", (event) => {
 			const button = $(event.currentTarget);
 			this.open_terminal_oqc_check({
-				delivery_note: this.oqcFilters.delivery_note,
+				source_type: button.data("sourceType") || "Delivery Note OQC",
+				delivery_note: button.data("deliveryNote") || this.oqcFilters.delivery_note,
+				delivery_plan: button.data("deliveryPlan") || this.oqcFilters.delivery_plan,
+				source_detail: button.data("sourceDetail") || "",
 				item_code: button.data("itemCode"),
 				warehouse: button.data("warehouse") || "",
 				uom: button.data("uom") || "",
@@ -815,6 +859,7 @@ class QualityInspectionTerminal {
 
 	render_oqc_item_row(row) {
 		const hasCheck = !!row.check_name;
+		const sourceType = row.source_type || (row.delivery_plan ? "Delivery Plan OQC" : "Delivery Note OQC");
 		const ruleNote = row.production_quality_rule
 			? `<em>${esc(row.production_quality_rule)}${row.quality_inspection_template ? ` · ${esc(row.quality_inspection_template)}` : ""}</em>`
 			: `<em class="warn">${__("No OQC rule configured. Manual inspection is allowed.")}</em>`;
@@ -830,7 +875,7 @@ class QualityInspectionTerminal {
 					<span class="jce-q-pill">${esc(row.check_name || "-")}</span>
 					<span class="jce-q-pill ${status_tone(row.overall_status)}">${esc(inspection_status_label(row.overall_status || "Pending"))}</span>
 					<span class="jce-q-pill ${release_tone(row.release_status)}">${esc(oqc_release_status_label(row.release_status || "Pending"))}</span>
-					<button class="jce-q-small-button primary" data-oqc-open="1" data-item-code="${esc(row.item_code || "")}" data-warehouse="${esc(row.warehouse || "")}" data-uom="${esc(row.uom || "")}">
+					<button class="jce-q-small-button primary" data-oqc-open="1" data-source-type="${esc(sourceType)}" data-delivery-note="${esc(row.delivery_note || "")}" data-delivery-plan="${esc(row.delivery_plan || "")}" data-source-detail="${esc(row.source_detail || "")}" data-item-code="${esc(row.item_code || "")}" data-warehouse="${esc(row.warehouse || "")}" data-uom="${esc(row.uom || "")}">
 						${hasCheck ? __("Open OQC") : __("Create OQC")}
 					</button>
 				</div>
@@ -839,9 +884,21 @@ class QualityInspectionTerminal {
 	}
 
 	open_terminal_oqc_check(args) {
+		const isDeliveryPlanOqc = args.source_type === "Delivery Plan OQC";
+		const method = isDeliveryPlanOqc
+			? "jce_quality.api.quality.get_or_create_delivery_plan_oqc_check"
+			: "jce_quality.api.quality.get_or_create_delivery_oqc_check";
+		const callArgs = isDeliveryPlanOqc
+			? { delivery_plan: args.delivery_plan, source_detail: args.source_detail }
+			: {
+				delivery_note: args.delivery_note,
+				item_code: args.item_code,
+				warehouse: args.warehouse,
+				uom: args.uom,
+			};
 		frappe.call({
-			method: "jce_quality.api.quality.get_or_create_delivery_oqc_check",
-			args,
+			method,
+			args: callArgs,
 			freeze: true,
 			freeze_message: __("Opening OQC..."),
 		}).then((r) => {
@@ -1139,6 +1196,10 @@ class QualityInspectionTerminal {
 		return `<div class="jce-q-info-item"><span>${esc(label)}</span><b>${esc(value || "-")}</b></div>`;
 	}
 
+	is_oqc_check(doc) {
+		return !!doc && (doc.quality_node === "OQC" || OQC_SOURCE_TYPES.includes(doc.source_type));
+	}
+
 	render_sample_meta(doc) {
 		const items = [
 			[__("Required Type"), doc.required_sample_type || "-"],
@@ -1216,6 +1277,9 @@ class QualityInspectionTerminal {
 	}
 
 	render_quick_actions(doc) {
+		if (this.is_oqc_check(doc)) {
+			return "";
+		}
 		if (doc.overall_status !== "Rejected") {
 			return "";
 		}
@@ -1264,6 +1328,9 @@ class QualityInspectionTerminal {
 	}
 
 	render_ng_disposition_panel(doc) {
+		if (this.is_oqc_check(doc)) {
+			return "";
+		}
 		const should_show = doc.overall_status === "Rejected" || doc.overall_status === "Concession Released" || doc.disposition || cint(doc.release_approved);
 		if (!should_show) return "";
 		const state = this.get_ng_disposition_state(doc);
@@ -1336,29 +1403,33 @@ class QualityInspectionTerminal {
 	}
 
 	render_oqc_release_panel(doc) {
-		if (doc.source_type !== "Delivery Note OQC") return "";
+		if (!this.is_oqc_check(doc)) return "";
 		const status = doc.release_status || "Pending";
 		const permissions = doc.terminal_permissions || {};
 		const submitted = cint(doc.docstatus) === 1;
+		const sourceSubmitted = doc.oqc_source_submitted !== false;
 		const passing = ["Accepted", "Concession Released"].includes(doc.overall_status);
 		const rejected = doc.overall_status === "Rejected";
 		const buttons = [];
-		if (submitted && passing && permissions.can_oqc_release) {
+		if (submitted && sourceSubmitted && passing && permissions.can_oqc_release) {
 			buttons.push(`<button class="jce-q-bar-button primary" data-action="oqc-release" data-release-status="Released">${__("Release")}</button>`);
 		}
-		if (submitted && passing && permissions.can_oqc_temporary_release) {
+		if (submitted && sourceSubmitted && passing && permissions.can_oqc_temporary_release) {
 			buttons.push(`<button class="jce-q-bar-button warn" data-action="oqc-release" data-release-status="Temporary Released">${__("Temporary Release")}</button>`);
 		}
-		if (submitted && rejected && permissions.can_oqc_block) {
+		if (submitted && sourceSubmitted && rejected && permissions.can_oqc_block) {
 			buttons.push(`<button class="jce-q-bar-button danger" data-action="oqc-release" data-release-status="Blocked">${__("Block")}</button>`);
 		}
 		const help = !submitted
 			? __("Submit the OQC check before release.")
-			: rejected
+			: !sourceSubmitted
+				? __("Submit the Delivery Note before final OQC release actions.")
+				: rejected
 				? __("Rejected OQC can be blocked or escalated by an authorized user.")
 				: passing
 					? __("Waiting for an authorized user to release OQC.")
 					: __("OQC release is available after accepted inspection.");
+		const sourceLabel = doc.source_doctype || __("Source");
 		return `
 			<section class="jce-q-panel jce-q-disposition-panel">
 				<div class="jce-q-section-head">
@@ -1369,7 +1440,8 @@ class QualityInspectionTerminal {
 					<span class="jce-q-pill ${status === "Released" ? "ok" : status === "Blocked" ? "danger" : "warn"}">${esc(oqc_release_status_label(status))}</span>
 				</div>
 				<div class="jce-q-info-grid">
-					${this.render_info_item(__("Delivery Note"), doc.source_name || "-")}
+					${this.render_info_item(__(sourceLabel), doc.source_name || "-")}
+					${this.render_info_item(__("Source Status"), doc.oqc_source_status || doc.oqc_source_docstatus || "-")}
 					${this.render_info_item(__("Source Detail"), doc.source_detail || "-")}
 					${this.render_info_item(__("Escalated DMR"), doc.escalated_dmr || "-")}
 				</div>
@@ -1483,6 +1555,7 @@ class QualityInspectionTerminal {
 
 	maybe_auto_open_ng_actions() {
 		if (!this.current || this.current.overall_status !== "Rejected") return;
+		if (this.is_oqc_check(this.current)) return;
 		if (this.ngActionDialogShown.has(this.current.name)) return;
 		this.ngActionDialogShown.add(this.current.name);
 		setTimeout(() => this.open_ng_action_dialog({ automatic: true }), 220);
@@ -1490,6 +1563,7 @@ class QualityInspectionTerminal {
 
 	open_ng_action_dialog() {
 		if (!this.current || this.current.overall_status !== "Rejected") return;
+		if (this.is_oqc_check(this.current)) return;
 		const action_note = this.build_action_note(this.current);
 		this.open_terminal_sheet({
 			title: __("NG Quick Actions"),

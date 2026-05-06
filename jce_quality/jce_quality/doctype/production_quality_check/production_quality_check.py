@@ -4,14 +4,17 @@ from frappe.utils import flt, now_datetime
 
 from jce_quality.services.quality import (
 	DELIVERY_NOTE_OQC_SOURCE_TYPE,
+	DELIVERY_PLAN_OQC_SOURCE_TYPE,
 	MANUAL_PRODUCTION_SOURCE_TYPE,
 	PRODUCTION_SOURCE_TYPE,
 	inspect_and_set_status,
+	get_delivery_plan_doc,
 	get_delivery_note_doc,
 	load_template_readings,
 	populate_manual_check_defaults,
 	populate_check_from_scheduling,
 	prepare_check_for_terminal,
+	sync_delivery_plan_oqc_status_for_check,
 	sync_scheduling_item_quality_status,
 	validate_sample_reference,
 )
@@ -54,21 +57,30 @@ class ProductionQualityCheck(Document):
 
 	def on_submit(self):
 		sync_scheduling_item_quality_status(self.scheduling_item)
+		sync_delivery_plan_oqc_status_for_check(self)
 		close_open_patrol_reminders(self)
 
 	def on_cancel(self):
 		self.status = "Cancelled"
 		sync_scheduling_item_quality_status(self.scheduling_item)
+		sync_delivery_plan_oqc_status_for_check(self)
+
+	def on_update(self):
+		if not self.docstatus:
+			sync_delivery_plan_oqc_status_for_check(self)
 
 	def on_update_after_submit(self):
 		self.set_photo_details()
 		sync_scheduling_item_quality_status(self.scheduling_item)
+		sync_delivery_plan_oqc_status_for_check(self)
 
 	def set_default_source_type(self):
 		if self.source_type:
 			return
 		if self.work_order_scheduling or self.scheduling_item:
 			self.source_type = PRODUCTION_SOURCE_TYPE
+		elif self.source_doctype == "Delivery Plan":
+			self.source_type = DELIVERY_PLAN_OQC_SOURCE_TYPE
 		elif self.source_doctype == "Delivery Note" or self.quality_node == "OQC":
 			self.source_type = DELIVERY_NOTE_OQC_SOURCE_TYPE
 		else:
@@ -88,7 +100,14 @@ class ProductionQualityCheck(Document):
 				frappe.throw(frappe._("Delivery Note OQC checks must use OQC quality node."))
 			if not (self.source_doctype == "Delivery Note" and self.source_name and self.item_code):
 				frappe.throw(frappe._("Delivery Note, source detail, and item are required for OQC checks."))
-			get_delivery_note_doc(self.source_name, require_submitted=True, allow_return=False)
+			get_delivery_note_doc(self.source_name, require_submitted=False, allow_return=False)
+			return
+		if self.source_type == DELIVERY_PLAN_OQC_SOURCE_TYPE:
+			if self.quality_node != "OQC":
+				frappe.throw(frappe._("Delivery Plan OQC checks must use OQC quality node."))
+			if not (self.source_doctype == "Delivery Plan" and self.source_name and self.source_detail and self.item_code):
+				frappe.throw(frappe._("Delivery Plan, source detail, and item are required for OQC checks."))
+			get_delivery_plan_doc(self.source_name)
 			return
 		frappe.throw(frappe._("Invalid quality check source type {0}.").format(self.source_type))
 

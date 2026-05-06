@@ -60,6 +60,8 @@ def validate_dmr_source(source, item_code: str | None = None, dmr_type: str | No
 			frappe.throw(_("Production Quality Check {0} must be submitted before creating DMR.").format(source.name))
 		if source.get("overall_status") != "Rejected":
 			frappe.throw(_("Only rejected Production Quality Check can create DMR."))
+		if source.get("quality_node") == "OQC" or source.get("source_type") in ("Delivery Note OQC", "Delivery Plan OQC"):
+			validate_oqc_dmr_source(source)
 		return
 
 	if source.doctype == "Delivery Note":
@@ -68,6 +70,19 @@ def validate_dmr_source(source, item_code: str | None = None, dmr_type: str | No
 		if source.get("is_return"):
 			frappe.throw(_("Customer Complaint DMR must reference the original Delivery Note, not a return."))
 		_pick_child_item(source, item_code, "items")
+
+
+def validate_oqc_dmr_source(source) -> None:
+	if source.get("source_type") == "Delivery Note OQC" and source.get("source_doctype") == "Delivery Note":
+		if not source.get("source_name") or not frappe.db.exists("Delivery Note", source.source_name):
+			frappe.throw(_("Delivery Note is required before escalating OQC to DMR."))
+		dn = frappe.get_doc("Delivery Note", source.source_name)
+		if dn.docstatus != 1:
+			frappe.throw(_("Submit the Delivery Note before escalating OQC to DMR."))
+		if dn.get("is_return"):
+			frappe.throw(_("Return Delivery Note {0} cannot be used for OQC.").format(dn.name))
+		return
+	frappe.throw(_("Create and submit the Delivery Note before escalating OQC to DMR."))
 
 
 def populate_dmr_from_source(dmr, source, item_code: str | None = None, dmr_type: str | None = None):
