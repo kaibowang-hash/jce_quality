@@ -223,7 +223,10 @@ class QualityInspectionTerminal {
 					</button>
 				</section>
 				<section class="jce-q-filter-panel">
-					<div class="jce-q-filter-title">${__("Filters")}</div>
+					<div class="jce-q-filter-head">
+						<div class="jce-q-filter-title">${__("Filters")}</div>
+						<button class="jce-q-small-button primary icon jce-q-mobile-filter-refresh" title="${__("Refresh")}" aria-label="${__("Refresh")}">${icon_html("refresh-cw")}</button>
+					</div>
 					<div class="jce-q-toolbar"></div>
 				</section>
 				${this.render_pwa_hint()}
@@ -232,6 +235,7 @@ class QualityInspectionTerminal {
 		`);
 		this.update_fullscreen_class(true);
 		this.body.find('[data-action="fullscreen"]').on("click", () => this.toggle_fullscreen());
+		this.body.find(".jce-q-mobile-filter-refresh").on("click", () => this.refresh());
 		this.body.find('[data-action="dismiss-pwa-hint"]').on("click", () => this.dismiss_pwa_hint());
 		this.body.find('[data-action="manual-check"]').on("click", () => this.open_manual_check_dialog());
 		this.body.find('[data-action="oqc-check"]').on("click", () => this.render_oqc_terminal_view());
@@ -251,7 +255,7 @@ class QualityInspectionTerminal {
 		];
 		this.controls = {};
 		fields.forEach((df) => {
-			const holder = $('<div class="jce-q-filter"></div>').appendTo(toolbar);
+			const holder = $(`<div class="jce-q-filter jce-q-filter-${df.fieldname}"></div>`).appendTo(toolbar);
 			const control = frappe.ui.form.make_control({ parent: holder, df, render_input: true });
 			control.set_value(df.default || "");
 			control.$input.on("change", () => {
@@ -588,32 +592,34 @@ class QualityInspectionTerminal {
 						${this.fullscreen_toolbar_button()}
 					</div>
 				</section>
-				<section class="jce-q-filter-panel oqc">
-					<div class="jce-q-filter-title">${__("Filters")}</div>
-					<div class="jce-q-toolbar jce-q-oqc-toolbar"></div>
-				</section>
-				<section class="jce-q-oqc-workspace">
-					<div class="jce-q-panel jce-q-oqc-list-panel">
-						<div class="jce-q-section-head">
-							<div>
-								<span>${__("Delivery Note List")}</span>
-								<b>${__("Deliveries")}</b>
+				<div class="jce-q-oqc-scroll">
+					<section class="jce-q-filter-panel oqc">
+						<div class="jce-q-filter-title">${__("Filters")}</div>
+						<div class="jce-q-toolbar jce-q-oqc-toolbar"></div>
+					</section>
+					<section class="jce-q-oqc-workspace">
+						<div class="jce-q-panel jce-q-oqc-list-panel">
+							<div class="jce-q-section-head">
+								<div>
+									<span>${__("Delivery Note List")}</span>
+									<b>${__("Deliveries")}</b>
+								</div>
+								<span class="jce-q-pill jce-q-oqc-count">0</span>
 							</div>
-							<span class="jce-q-pill jce-q-oqc-count">0</span>
+							<div class="jce-q-oqc-delivery-list"></div>
 						</div>
-						<div class="jce-q-oqc-delivery-list"></div>
-					</div>
-					<div class="jce-q-panel jce-q-oqc-items-panel">
-						<div class="jce-q-section-head">
-							<div>
-								<span>${__("OQC Items")}</span>
-								<b>${esc(this.oqcFilters.delivery_note || __("Select Delivery Note."))}</b>
+						<div class="jce-q-panel jce-q-oqc-items-panel">
+							<div class="jce-q-section-head">
+								<div>
+									<span>${__("OQC Items")}</span>
+									<b>${esc(this.oqcFilters.delivery_note || __("Select Delivery Note."))}</b>
+								</div>
+								<button class="jce-q-small-button" data-action="clear-delivery-note">${__("Back to Delivery Note List")}</button>
 							</div>
-							<button class="jce-q-small-button" data-action="clear-delivery-note">${__("Back to Delivery Note List")}</button>
+							<div class="jce-q-oqc-items"></div>
 						</div>
-						<div class="jce-q-oqc-items"></div>
-					</div>
-				</section>
+					</section>
+				</div>
 			</div>
 		`);
 		this.update_fullscreen_class(true);
@@ -3318,6 +3324,12 @@ class QualityInspectionTerminal {
 					border-radius: 8px;
 					background: rgba(255, 255, 255, 0.68);
 				}
+				.jce-q-filter-head {
+					display: block;
+				}
+				.jce-q-mobile-filter-refresh {
+					display: none !important;
+				}
 				.jce-q-toolbar {
 					display: grid;
 					grid-template-columns: minmax(150px, 1fr) minmax(150px, 1fr) minmax(150px, 1fr) auto;
@@ -4448,6 +4460,9 @@ class QualityInspectionTerminal {
 					grid-template-rows: auto auto minmax(0, 1fr);
 					overflow: hidden;
 				}
+				.jce-q-oqc-scroll {
+					display: contents;
+				}
 				.jce-q-filter-panel.oqc {
 					align-items: flex-end;
 				}
@@ -4986,6 +5001,270 @@ class QualityInspectionTerminal {
 					.jce-q-oqc-item-actions {
 						align-items: stretch;
 						flex-direction: column;
+					}
+					.jce-terminal-fullscreen .jce-q-task-shell.jce-q-oqc-shell {
+						display: flex;
+						flex-direction: column;
+						overflow-y: auto;
+						overflow-x: hidden;
+						-webkit-overflow-scrolling: touch;
+					}
+					.jce-q-oqc-shell .jce-q-filter-panel.oqc {
+						margin-bottom: 8px;
+					}
+					.jce-q-oqc-shell .jce-q-oqc-toolbar {
+						grid-template-columns: repeat(2, minmax(0, 1fr));
+						gap: 7px;
+					}
+					.jce-q-oqc-shell .jce-q-oqc-workspace {
+						display: flex;
+						flex: 0 0 auto;
+						flex-direction: column;
+						gap: 8px;
+						height: auto;
+						min-height: 0;
+					}
+					.jce-q-oqc-shell .jce-q-oqc-list-panel {
+						flex: 0 0 auto;
+						min-height: 180px;
+						max-height: 34dvh;
+					}
+					.jce-q-oqc-shell .jce-q-oqc-items-panel {
+						flex: 0 0 auto;
+						min-height: 260px;
+						overflow: visible;
+					}
+					.jce-q-oqc-shell .jce-q-oqc-items {
+						overflow: visible;
+					}
+				}
+				@media (max-width: 640px) and (orientation: portrait) and (pointer: coarse) {
+					.jce-q-task-shell {
+						padding: max(7px, env(safe-area-inset-top)) 8px max(12px, env(safe-area-inset-bottom));
+					}
+					.jce-q-list-header {
+						gap: 7px;
+						margin-bottom: 7px;
+					}
+					.jce-q-list-header h2 {
+						font-size: 20px;
+					}
+					.jce-q-filter-panel:not(.oqc) {
+						margin-bottom: 8px;
+						padding: 8px;
+					}
+					.jce-q-filter-head {
+						display: flex;
+						align-items: center;
+						justify-content: space-between;
+						gap: 8px;
+						margin-bottom: 6px;
+					}
+					.jce-q-filter-panel:not(.oqc) .jce-q-mobile-filter-refresh {
+						display: inline-flex !important;
+						flex: 0 0 auto;
+						width: 34px !important;
+						min-width: 34px !important;
+						height: 34px;
+						min-height: 34px;
+						border-radius: 999px;
+					}
+					.jce-q-filter-panel:not(.oqc) .jce-q-filter-action {
+						display: none;
+					}
+					.jce-q-filter-panel:not(.oqc) .jce-q-toolbar {
+						grid-template-columns: repeat(2, minmax(0, 1fr));
+						gap: 7px;
+						margin-top: 0;
+					}
+					.jce-q-filter-panel:not(.oqc) .jce-q-filter-posting_date {
+						grid-column: 1 / -1;
+					}
+					.jce-q-filter .control-label {
+						margin-bottom: 2px;
+						font-size: 10px;
+					}
+					.jce-q-filter .form-control,
+					.jce-q-field .form-control,
+					.jce-q-reading-inputs input,
+					.jce-q-reading-matrix-row input,
+					.jce-q-readonly-link {
+						height: 34px;
+						min-height: 34px;
+					}
+					.jce-q-focus-toolbar {
+						min-height: 0;
+						gap: 6px;
+						padding: max(6px, env(safe-area-inset-top)) 8px 6px;
+					}
+					.jce-q-focus-toolbar .jce-q-toolbar-left {
+						align-items: center;
+						flex-direction: row;
+						gap: 7px;
+						width: 100%;
+					}
+					.jce-q-focus-toolbar .jce-q-toolbar-actions {
+						width: 100%;
+						justify-content: flex-start;
+						gap: 5px;
+						flex-wrap: nowrap;
+						overflow-x: auto;
+						padding-bottom: 1px;
+						-webkit-overflow-scrolling: touch;
+					}
+					.jce-q-focus-toolbar .jce-q-toolbar-actions .jce-q-bar-button {
+						flex: 0 0 auto;
+						min-height: 32px;
+						padding: 0 10px;
+					}
+					.jce-q-nav-buttons {
+						width: auto;
+						gap: 5px;
+					}
+					.jce-q-nav-buttons button {
+						flex: 0 0 auto;
+					}
+					.jce-q-focus-toolbar .jce-q-small-button.icon,
+					.jce-q-oqc-shell .jce-q-small-button.icon {
+						width: 34px;
+						min-width: 34px;
+						min-height: 32px;
+						border-radius: 999px;
+						background: rgba(255, 255, 255, 0.76);
+						border-color: rgba(0, 0, 0, 0.08);
+						box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+						backdrop-filter: saturate(1.6) blur(18px);
+						-webkit-backdrop-filter: saturate(1.6) blur(18px);
+					}
+					.jce-q-focus-title span,
+					.jce-q-focus-title em {
+						font-size: 10px;
+						line-height: 1.25;
+					}
+					.jce-q-focus-title b {
+						font-size: 14px;
+						line-height: 1.18;
+					}
+					.jce-q-mobile-tabs {
+						display: grid;
+						grid-template-columns: 1fr 1fr;
+						gap: 0;
+						margin: 6px 8px;
+						padding: 3px;
+						border: 1px solid rgba(0, 0, 0, 0.06);
+						border-radius: 999px;
+						background: rgba(118, 118, 128, 0.14);
+					}
+					.jce-q-mobile-tabs.single {
+						grid-template-columns: 1fr;
+					}
+					.jce-q-mobile-tabs button {
+						min-height: 32px;
+						border: 0;
+						border-radius: 999px;
+						background: transparent;
+						color: var(--jce-muted);
+						font-size: 13px;
+						font-weight: 800;
+					}
+					.jce-q-mobile-tabs button.active {
+						background: rgba(255, 255, 255, 0.94);
+						color: var(--jce-text);
+						box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+					}
+					.jce-q-inspection-pane {
+						padding: 8px;
+					}
+					.jce-terminal-fullscreen .jce-q-task-shell.jce-q-oqc-shell,
+					.jce-q-task-shell.jce-q-oqc-shell {
+						display: flex !important;
+						flex-direction: column;
+						height: 100dvh;
+						max-height: 100dvh;
+						overflow: hidden !important;
+					}
+					.jce-q-oqc-shell .jce-q-list-header {
+						flex: 0 0 auto;
+						align-items: center;
+						flex-direction: row;
+						gap: 7px;
+						margin-bottom: 6px;
+					}
+					.jce-q-oqc-shell .jce-q-toolbar-left {
+						align-items: center;
+						flex: 1 1 auto;
+						flex-direction: row;
+						gap: 7px;
+						width: auto;
+						min-width: 0;
+					}
+					.jce-q-oqc-shell .jce-q-toolbar-left > div:last-child {
+						min-width: 0;
+					}
+					.jce-q-oqc-shell .jce-q-toolbar-left h2 {
+						max-width: 100%;
+						overflow: hidden;
+						text-overflow: ellipsis;
+						white-space: nowrap;
+						font-size: 17px;
+						line-height: 1.12;
+					}
+					.jce-q-oqc-shell .jce-q-toolbar-left .jce-q-eyebrow {
+						font-size: 9px;
+					}
+					.jce-q-oqc-shell .jce-q-list-actions {
+						flex: 0 0 auto;
+						align-items: center;
+						flex-direction: row;
+						gap: 5px;
+						width: auto;
+					}
+					.jce-q-oqc-shell .jce-q-list-actions .jce-q-small-button.primary {
+						min-height: 32px;
+						padding: 0 11px;
+						border-radius: 999px;
+					}
+					.jce-q-oqc-scroll {
+						display: block;
+						flex: 1 1 auto;
+						min-height: 0;
+						overflow-y: auto;
+						overflow-x: hidden;
+						padding-bottom: max(10px, env(safe-area-inset-bottom));
+						overscroll-behavior: contain;
+						-webkit-overflow-scrolling: touch;
+					}
+					.jce-q-oqc-shell .jce-q-filter-panel.oqc {
+						margin-bottom: 8px;
+						padding: 8px;
+					}
+					.jce-q-oqc-shell .jce-q-oqc-toolbar {
+						grid-template-columns: repeat(2, minmax(0, 1fr));
+						gap: 7px;
+						margin-top: 6px;
+					}
+					.jce-q-oqc-shell .jce-q-oqc-workspace {
+						display: flex;
+						flex-direction: column;
+						gap: 8px;
+						height: auto;
+						min-height: 0;
+					}
+					.jce-q-oqc-shell .jce-q-oqc-list-panel {
+						flex: 0 0 auto;
+						min-height: 138px;
+						max-height: 28dvh;
+					}
+					.jce-q-oqc-shell .jce-q-oqc-items-panel {
+						flex: 0 0 auto;
+						min-height: 260px;
+						overflow: visible;
+					}
+					.jce-q-oqc-shell .jce-q-oqc-items {
+						overflow: visible;
+					}
+					.jce-q-oqc-shell .jce-q-oqc-row {
+						padding: 9px;
 					}
 				}
 			</style>`).appendTo(document.head);
