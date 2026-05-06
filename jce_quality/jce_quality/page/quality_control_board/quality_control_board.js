@@ -25,7 +25,7 @@ class QualityControlBoard {
 	}
 
 	setup() {
-		this.page.set_primary_action(__("Refresh"), () => this.refresh(), "refresh");
+		this.page.set_primary_action(__("Refresh"), () => this.refresh(), "es-line-reload");
 		this.body = $(`<div class="jce-q-board"><div class="jce-q-board-filters"></div><div class="jce-q-board-content"></div></div>`).appendTo(this.page.body);
 		this.inject_style();
 		this.render_filters();

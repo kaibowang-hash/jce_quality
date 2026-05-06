@@ -77,7 +77,7 @@ class QualityInspectionTerminal {
 	}
 
 	setup() {
-		this.page.set_primary_action(__("Refresh"), () => this.refresh());
+		this.page.set_primary_action(__("Refresh"), () => this.refresh(), "es-line-reload");
 		this.body = $(`<div class="jce-q-terminal"></div>`).appendTo(this.page.body);
 		this.inject_style();
 		this.install_pwa_head();
@@ -4911,33 +4911,26 @@ function form_url(doctype, name) {
 	return `/app/${slug}/${encodeURIComponent(name)}`;
 }
 
-const JCE_ICONS = {
-	"alert-triangle": '<path d="M10.3 3.7 2.6 17a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.7a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
-	camera: '<path d="M14.5 4 16 6h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3l1.5-2h5Z"/><circle cx="12" cy="13" r="3.5"/>',
-	"chevron-left": '<path d="m15 18-6-6 6-6"/>',
-	"chevron-right": '<path d="m9 18 6-6-6-6"/>',
-	"external-link": '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
-	"file-text": '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/>',
-	list: '<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>',
-	"maximize-2": '<path d="M15 3h6v6"/><path d="m21 3-7 7"/><path d="M9 21H3v-6"/><path d="m3 21 7-7"/>',
-	"minimize-2": '<path d="M4 14h6v6"/><path d="m10 14-7 7"/><path d="M20 10h-6V4"/><path d="m14 10 7-7"/>',
-	"move-horizontal": '<path d="m18 8 4 4-4 4"/><path d="M2 12h20"/><path d="m6 8-4 4 4 4"/>',
-	plus: '<path d="M12 5v14"/><path d="M5 12h14"/>',
-	"refresh-cw": '<path d="M21 12a9 9 0 0 1-15.5 6.2"/><path d="M3 12A9 9 0 0 1 18.5 5.8"/><path d="M18 2v4h4"/><path d="M6 22v-4H2"/>',
-	"rotate-ccw": '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v6h6"/>',
-	square: '<rect x="5" y="5" width="14" height="14" rx="1"/>',
-	circle: '<circle cx="12" cy="12" r="8"/>',
-	truck: '<path d="M10 17H6a2 2 0 0 1-2-2V6h11v11"/><path d="M15 9h3l3 4v4h-3"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/>',
-	"trash-2": '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>',
-	"undo-2": '<path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 1 1 0 12h-1"/>',
-	x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
-	"zoom-in": '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/><path d="M11 8v6"/><path d="M8 11h6"/>',
-	"zoom-out": '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/><path d="M8 11h6"/>',
+const JCE_ICON_ALIASES = {
+	"alert-triangle": "es-solid-alert-triangle",
+	camera: "es-line-camera",
+	"chevron-left": "es-line-left-chevron",
+	"chevron-right": "es-line-right-chevron",
+	"external-link": "es-solid-external-link",
+	"file-text": "es-line-select-file",
+	list: "es-line-bullet-list",
+	"maximize-2": "es-line-expand",
+	"minimize-2": "shrink",
+	"move-horizontal": "arrow-left-right",
+	plus: "es-line-add",
+	"refresh-cw": "es-line-reload",
+	"trash-2": "delete",
+	x: "es-small-close",
 };
 
-function icon_html(icon) {
-	const paths = JCE_ICONS[icon] || JCE_ICONS["alert-triangle"];
-	return `<svg class="jce-q-svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+function icon_html(icon, size = "sm") {
+	const icon_name = JCE_ICON_ALIASES[icon] || icon || "es-solid-alert-triangle";
+	return frappe.utils.icon(icon_name, size, "", "", "jce-q-svg-icon", true);
 }
 
 function clean_value(value) {
