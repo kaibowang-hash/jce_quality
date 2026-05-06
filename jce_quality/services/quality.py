@@ -25,6 +25,17 @@ ALL_QUALITY_NODES = (*QUALITY_NODES, SHIPPING_QUALITY_NODE)
 PRODUCTION_SOURCE_TYPE = "Production Scheduling"
 MANUAL_PRODUCTION_SOURCE_TYPE = "Manual Production"
 DELIVERY_NOTE_OQC_SOURCE_TYPE = "Delivery Note OQC"
+DELIVERY_PLAN_OQC_SOURCE_TYPE = "Delivery Plan OQC"
+OQC_SOURCE_TYPES = (DELIVERY_NOTE_OQC_SOURCE_TYPE, DELIVERY_PLAN_OQC_SOURCE_TYPE)
+OQC_PLAN_STATUS_OPTIONS = (
+	"Not Started",
+	"In Progress",
+	"Accepted",
+	"Rejected",
+	"Released",
+	"Blocked",
+	"Temporary Released",
+)
 READING_TEMPLATE_METADATA_FIELDS = ("inspection_method", "inspection_standard")
 PASSING_STATUSES = ("Accepted", "Concession Released")
 TEMPORARY_CONTINUE_DISPOSITION = "Temporary Continue"
@@ -96,7 +107,7 @@ def populate_check_from_scheduling(doc):
 
 
 def populate_manual_check_defaults(doc):
-	if doc.get("source_type") not in (MANUAL_PRODUCTION_SOURCE_TYPE, DELIVERY_NOTE_OQC_SOURCE_TYPE):
+	if doc.get("source_type") not in (MANUAL_PRODUCTION_SOURCE_TYPE, *OQC_SOURCE_TYPES):
 		return
 
 	if not doc.get("posting_date"):
@@ -131,7 +142,9 @@ def apply_rule_to_check(doc):
 		doc.required_sample_type = rule.required_sample_type
 		doc.sample_manager = doc.sample_manager or rule.get("reference_sample")
 	else:
-		doc.requires_sample = 1
+		doc.production_quality_rule = None
+		doc.requires_sample = 0
+		doc.required_sample_type = None
 		doc.quality_inspection_template = doc.quality_inspection_template or (
 			frappe.db.get_value("Item", doc.item_code, "quality_inspection_template") if doc.item_code else None
 		)
@@ -1795,7 +1808,7 @@ def ensure_check_node_is_required(doc):
 
 
 def get_delivery_oqc_items(delivery_note: str):
-	dn = get_delivery_note_doc(delivery_note, require_submitted=True, allow_return=False)
+	dn = get_delivery_note_doc(delivery_note, require_submitted=False, allow_return=False)
 	groups = build_delivery_oqc_groups(dn)
 	existing = get_delivery_oqc_checks_map(dn.name)
 	item_group_map = get_item_group_map([group.get("item_code") for group in groups.values()])
@@ -1815,7 +1828,12 @@ def get_delivery_oqc_items(delivery_note: str):
 		rows.append(
 			{
 				**group,
+				"source_type": DELIVERY_NOTE_OQC_SOURCE_TYPE,
+				"source_doctype": "Delivery Note",
+				"source_name": dn.name,
 				"delivery_note": dn.name,
+				"delivery_note_docstatus": dn.docstatus,
+				"delivery_note_status": dn.get("status"),
 				"source_detail": key,
 				"check_name": check.name if check else None,
 				"overall_status": check.overall_status if check else "Pending",
@@ -1842,7 +1860,7 @@ def get_delivery_oqc_delivery_notes(
 		return []
 
 	dn_meta = frappe.get_meta("Delivery Note")
-	filters = {"docstatus": 1}
+	filters = {"docstatus": ("<", 2)}
 	if dn_meta.has_field("is_return"):
 		filters["is_return"] = 0
 	if delivery_note:
@@ -1884,7 +1902,7 @@ def get_delivery_plan_delivery_notes(delivery_plan: str) -> list[dict]:
 	dn_meta = frappe.get_meta("Delivery Note")
 	if not dn_meta.has_field("delivery_plan"):
 		return []
-	filters = {"delivery_plan": delivery_plan, "docstatus": 1}
+	filters = {"delivery_plan": delivery_plan, "docstatus": ("<", 2)}
 	if dn_meta.has_field("is_return"):
 		filters["is_return"] = 0
 	return frappe.get_list(
@@ -1896,13 +1914,103 @@ def get_delivery_plan_delivery_notes(delivery_plan: str) -> list[dict]:
 	)
 
 
+def get_delivery_plan_doc(delivery_plan: str):
+	if not delivery_plan:
+		frappe.throw(_("Delivery Plan is required."))
+	if not frappe.db.exists("DocType", "Delivery Plan"):
+		frappe.throw(_("Delivery Plan is not available on this site."))
+	if not frappe.db.exists("Delivery Plan", delivery_plan):
+		frappe.throw(_("Delivery Plan {0} does not exist.").format(delivery_plan))
+	plan = frappe.get_doc("Delivery Plan", delivery_plan)
+	if plan.docstatus == 2:
+		frappe.throw(_("Delivery Plan {0} is cancelled.").format(delivery_plan))
+	return plan
+
+
+def get_delivery_plan_oqc_items(delivery_plan: str) -> list[dict]:
+	plan = get_delivery_plan_doc(delivery_plan)
+	groups = get_delivery_plan_oqc_groups(plan)
+	existing = get_delivery_plan_oqc_checks_map(plan.name)
+	item_group_map = get_item_group_map([group.get("item_code") for group in groups.values()])
+	oqc_rules = get_enabled_quality_rules(SHIPPING_QUALITY_NODE)
+	rows = []
+	for source_detail, group in groups.items():
+		check = existing.get(source_detail)
+		rule = get_applicable_rule(
+			company=plan.get("company"),
+			plant_floor=None,
+			workstation=None,
+			item_code=group.get("item_code"),
+			item_group=item_group_map.get(group.get("item_code")),
+			quality_node=SHIPPING_QUALITY_NODE,
+			rules=oqc_rules,
+		)
+		rows.append(
+			{
+				**group,
+				"source_type": DELIVERY_PLAN_OQC_SOURCE_TYPE,
+				"source_doctype": "Delivery Plan",
+				"source_name": plan.name,
+				"delivery_plan": plan.name,
+				"delivery_plan_docstatus": plan.docstatus,
+				"source_detail": source_detail,
+				"check_name": check.name if check else None,
+				"overall_status": check.overall_status if check else "Pending",
+				"release_status": check.get("release_status") if check else "Pending",
+				"docstatus": check.docstatus if check else 0,
+				"production_quality_rule": rule.name if rule else None,
+				"quality_inspection_template": rule.quality_inspection_template if rule else None,
+				"oqc_rule_mandatory": cint(rule.is_mandatory) if rule else 0,
+				"manual_allowed": 1,
+			}
+		)
+	return rows
+
+
+def get_or_create_delivery_plan_oqc_check(delivery_plan: str, source_detail: str) -> str:
+	plan = get_delivery_plan_doc(delivery_plan)
+	groups = get_delivery_plan_oqc_groups(plan)
+	group = groups.get(source_detail)
+	if not group:
+		frappe.throw(_("No Delivery Plan item found for {0}.").format(source_detail))
+
+	existing = get_delivery_plan_oqc_checks_map(plan.name).get(source_detail)
+	if existing:
+		return existing.name
+
+	doc = frappe.new_doc("Production Quality Check")
+	doc.source_type = DELIVERY_PLAN_OQC_SOURCE_TYPE
+	doc.source_doctype = "Delivery Plan"
+	doc.source_name = plan.name
+	doc.source_detail = source_detail
+	doc.source_group_key = plan.name
+	doc.source_rows = json.dumps(group.get("source_rows") or [], default=str)
+	doc.quality_node = SHIPPING_QUALITY_NODE
+	doc.company = plan.get("company")
+	doc.customer = plan.get("customer") if doc.meta.has_field("customer") else None
+	doc.posting_date = plan.get("delivery_date") or today()
+	doc.item_code = group.get("item_code")
+	doc.item_name = group.get("item_name")
+	doc.uom = group.get("uom")
+	doc.workstation = None
+	doc.scheduling_qty = group.get("qty")
+	doc.completed_qty = group.get("qty")
+	doc.manual_qty = group.get("qty")
+	populate_manual_check_defaults(doc)
+	load_template_readings(doc)
+	doc.check_permission("create")
+	doc.insert(ignore_permissions=True)
+	sync_delivery_plan_oqc_status_for_check(doc)
+	return doc.name
+
+
 def get_or_create_delivery_oqc_check(
 	delivery_note: str,
 	item_code: str,
 	warehouse: str | None = None,
 	uom: str | None = None,
 ) -> str:
-	dn = get_delivery_note_doc(delivery_note, require_submitted=True, allow_return=False)
+	dn = get_delivery_note_doc(delivery_note, require_submitted=False, allow_return=False)
 	groups = build_delivery_oqc_groups(dn)
 	key = make_delivery_oqc_group_key(item_code, warehouse, uom)
 	group = groups.get(key)
@@ -1935,6 +2043,7 @@ def get_or_create_delivery_oqc_check(
 	load_template_readings(doc)
 	doc.check_permission("create")
 	doc.insert(ignore_permissions=True)
+	sync_delivery_plan_oqc_status_for_check(doc)
 	return doc.name
 
 
@@ -1959,6 +2068,7 @@ def release_oqc_check(
 		doc.db_set("escalated_dmr", dmr_name, update_modified=False)
 		if doc.meta.has_field("dmr"):
 			doc.db_set("dmr", dmr_name, update_modified=False)
+	sync_delivery_plan_oqc_status_for_check(doc)
 	return {"check_name": doc.name, "release_status": release_status, "dmr": dmr_name}
 
 
@@ -1968,12 +2078,13 @@ def validate_oqc_release_request(
 	temporary_release_note: str | None = None,
 	escalate_to_dmr: bool = False,
 ) -> None:
-	if doc.get("source_type") != DELIVERY_NOTE_OQC_SOURCE_TYPE:
-		frappe.throw(_("Only Delivery Note OQC checks can be released here."))
+	if doc.get("source_type") not in OQC_SOURCE_TYPES:
+		frappe.throw(_("Only OQC checks can be released here."))
 	if release_status not in ("Pending", "Released", "Temporary Released", "Blocked"):
 		frappe.throw(_("Invalid OQC release status {0}.").format(release_status))
 	if doc.docstatus != 1:
 		frappe.throw(_("Submit the OQC check before changing release status."))
+	ensure_submitted_oqc_delivery_note(doc)
 
 	if release_status in ("Released", "Temporary Released"):
 		if doc.overall_status not in PASSING_STATUSES:
@@ -1986,6 +2097,15 @@ def validate_oqc_release_request(
 
 	if escalate_to_dmr and doc.overall_status != "Rejected":
 		frappe.throw(_("Only rejected OQC checks can be escalated to DMR."))
+
+
+def ensure_submitted_oqc_delivery_note(doc) -> None:
+	if doc.get("source_type") == DELIVERY_NOTE_OQC_SOURCE_TYPE:
+		get_delivery_note_doc(doc.get("source_name"), require_submitted=True, allow_return=False)
+		return
+	if doc.get("source_type") == DELIVERY_PLAN_OQC_SOURCE_TYPE:
+		frappe.throw(_("Create and submit the Delivery Note before changing OQC release status."))
+	frappe.throw(_("Only OQC checks can be released here."))
 
 
 def get_oqc_email_package(
@@ -2160,6 +2280,8 @@ def get_delivery_note_doc(delivery_note: str, require_submitted: bool = False, a
 	if not frappe.db.exists("Delivery Note", delivery_note):
 		frappe.throw(_("Delivery Note {0} does not exist.").format(delivery_note))
 	dn = frappe.get_doc("Delivery Note", delivery_note)
+	if dn.docstatus == 2:
+		frappe.throw(_("Delivery Note {0} is cancelled.").format(delivery_note))
 	if require_submitted and dn.docstatus != 1:
 		frappe.throw(_("Delivery Note {0} must be submitted before OQC.").format(delivery_note))
 	if not allow_return and cint(dn.get("is_return")):
@@ -2208,6 +2330,57 @@ def make_delivery_oqc_group_key(item_code: str, warehouse: str | None = None, uo
 	return "||".join([item_code or "", warehouse or "", uom or ""])
 
 
+def get_delivery_plan_oqc_groups(plan) -> dict[str, dict]:
+	groups = {}
+	source_rows = list(plan.get("item_qties") or []) or list(plan.get("items") or [])
+	for row in source_rows:
+		if not row.get("item_code") or not row.get("name"):
+			continue
+		qty = get_delivery_plan_row_qty(row)
+		if qty <= 0:
+			continue
+		groups[row.name] = {
+			"item_code": row.item_code,
+			"item_name": row.get("item_name"),
+			"warehouse": row.get("warehouse"),
+			"uom": row.get("uom"),
+			"qty": qty,
+			"source_rows": [serialize_delivery_plan_row(row, qty)],
+		}
+	return groups
+
+
+def get_delivery_plan_row_qty(row) -> float:
+	for fieldname in (
+		"planned_delivery_qty",
+		"staging_qty",
+		"actual_qty",
+		"allocated_actual_qty",
+		"qty",
+		"actual_delivered_qty",
+	):
+		qty = flt(row.get(fieldname))
+		if qty > 0:
+			return qty
+	return 0
+
+
+def serialize_delivery_plan_row(row, qty: float | None = None) -> dict:
+	return {
+		"doctype": row.doctype,
+		"name": row.name,
+		"idx": row.idx,
+		"table": "item_qties" if row.doctype == "Delivery Plan Item Qty" else "items",
+		"item_code": row.get("item_code"),
+		"warehouse": row.get("warehouse"),
+		"uom": row.get("uom"),
+		"qty": flt(qty if qty is not None else get_delivery_plan_row_qty(row)),
+		"sales_order": row.get("sales_order"),
+		"so_detail": row.get("so_detail"),
+		"customer_delivery_note": row.get("customer_delivery_note"),
+	}
+
+
 def get_delivery_oqc_checks_map(delivery_note: str) -> dict[str, frappe._dict]:
 	rows = frappe.get_all(
 		"Production Quality Check",
@@ -2225,6 +2398,178 @@ def get_delivery_oqc_checks_map(delivery_note: str) -> dict[str, frappe._dict]:
 		if row.source_detail and row.source_detail not in result:
 			result[row.source_detail] = row
 	return result
+
+
+def get_delivery_plan_oqc_checks_map(delivery_plan: str) -> dict[str, frappe._dict]:
+	rows = frappe.get_all(
+		"Production Quality Check",
+		filters={
+			"source_type": DELIVERY_PLAN_OQC_SOURCE_TYPE,
+			"source_doctype": "Delivery Plan",
+			"source_name": delivery_plan,
+			"docstatus": ("<", 2),
+		},
+		fields=["name", "source_detail", "overall_status", "release_status", "docstatus", "modified"],
+		order_by="modified desc",
+	)
+	result = {}
+	for row in rows:
+		if row.source_detail and row.source_detail not in result:
+			result[row.source_detail] = row
+	return result
+
+
+def sync_delivery_plan_oqc_status_for_check(doc) -> None:
+	delivery_plan = get_delivery_plan_for_oqc_check(doc)
+	if delivery_plan:
+		refresh_delivery_plan_oqc_status(delivery_plan)
+
+
+def get_delivery_plan_for_oqc_check(doc) -> str | None:
+	if doc.get("source_type") == DELIVERY_PLAN_OQC_SOURCE_TYPE and doc.get("source_doctype") == "Delivery Plan":
+		return doc.get("source_name")
+	if doc.get("source_type") == DELIVERY_NOTE_OQC_SOURCE_TYPE and doc.get("source_doctype") == "Delivery Note" and doc.get("source_name"):
+		if not frappe.db.exists("DocType", "Delivery Note"):
+			return None
+		dn_meta = frappe.get_meta("Delivery Note")
+		if dn_meta.has_field("delivery_plan"):
+			return frappe.db.get_value("Delivery Note", doc.get("source_name"), "delivery_plan")
+	return None
+
+
+def refresh_delivery_plan_oqc_status(delivery_plan: str) -> None:
+	if not delivery_plan or not frappe.db.exists("DocType", "Delivery Plan"):
+		return
+	plan = get_delivery_plan_doc(delivery_plan)
+	status_by_row = get_delivery_plan_oqc_status_map(plan)
+	for child_doctype, rows in (
+		("Delivery Plan Item Qty", plan.get("item_qties") or []),
+		("Delivery Plan Item", plan.get("items") or []),
+	):
+		if not (
+			frappe.db.exists("DocType", child_doctype)
+			and frappe.get_meta(child_doctype).has_field("jce_quality_oqc_status")
+		):
+			continue
+		for row in rows:
+			status = status_by_row.get(row.name, "Not Started")
+			if row.get("jce_quality_oqc_status") != status:
+				frappe.db.set_value(child_doctype, row.name, "jce_quality_oqc_status", status, update_modified=False)
+
+
+def get_delivery_plan_oqc_status_map(plan) -> dict[str, str]:
+	status_by_row = {row.name: "Not Started" for row in list(plan.get("item_qties") or []) + list(plan.get("items") or [])}
+	plan_checks = frappe.get_all(
+		"Production Quality Check",
+		filters={
+			"source_type": DELIVERY_PLAN_OQC_SOURCE_TYPE,
+			"source_doctype": "Delivery Plan",
+			"source_name": plan.name,
+			"docstatus": ("<", 2),
+		},
+		fields=["name", "source_detail", "source_rows", "overall_status", "release_status", "docstatus", "modified"],
+		order_by="modified asc",
+	)
+	for check in plan_checks:
+		apply_delivery_plan_oqc_status(status_by_row, [check.source_detail], get_oqc_plan_status(check))
+
+	for check in get_delivery_note_oqc_checks_for_plan(plan.name):
+		row_names = match_delivery_note_oqc_to_delivery_plan_rows(plan, check)
+		apply_delivery_plan_oqc_status(status_by_row, row_names, get_oqc_plan_status(check))
+	return status_by_row
+
+
+def get_delivery_note_oqc_checks_for_plan(delivery_plan: str) -> list[frappe._dict]:
+	if not frappe.db.exists("DocType", "Delivery Note"):
+		return []
+	dn_meta = frappe.get_meta("Delivery Note")
+	if not dn_meta.has_field("delivery_plan"):
+		return []
+	filters = {"delivery_plan": delivery_plan, "docstatus": ("<", 2)}
+	if dn_meta.has_field("is_return"):
+		filters["is_return"] = 0
+	delivery_notes = frappe.get_all("Delivery Note", filters=filters, pluck="name")
+	if not delivery_notes:
+		return []
+	return frappe.get_all(
+		"Production Quality Check",
+		filters={
+			"source_type": DELIVERY_NOTE_OQC_SOURCE_TYPE,
+			"source_doctype": "Delivery Note",
+			"source_name": ("in", delivery_notes),
+			"docstatus": ("<", 2),
+		},
+		fields=["name", "source_name", "source_detail", "source_rows", "overall_status", "release_status", "docstatus", "modified"],
+		order_by="modified asc",
+	)
+
+
+def match_delivery_note_oqc_to_delivery_plan_rows(plan, check) -> list[str]:
+	source_rows = parse_source_rows(check.get("source_rows"))
+	item_rows = list(plan.get("items") or [])
+	qty_rows = list(plan.get("item_qties") or [])
+	matches = set()
+	for source_row in source_rows:
+		so_detail = source_row.get("so_detail")
+		if so_detail:
+			matches.update(row.name for row in item_rows if row.get("so_detail") == so_detail)
+
+		item_code = source_row.get("item_code")
+		uom = source_row.get("uom")
+		customer_delivery_note = source_row.get("customer_delivery_note")
+		for row in item_rows + qty_rows:
+			if item_code and row.get("item_code") != item_code:
+				continue
+			if uom and row.get("uom") and row.get("uom") != uom:
+				continue
+			if customer_delivery_note and row.get("customer_delivery_note") and row.get("customer_delivery_note") != customer_delivery_note:
+				continue
+			matches.add(row.name)
+	return list(matches)
+
+
+def parse_source_rows(value) -> list[dict]:
+	if not value:
+		return []
+	if isinstance(value, list):
+		return [row for row in value if isinstance(row, dict)]
+	if isinstance(value, str):
+		try:
+			rows = json.loads(value)
+		except ValueError:
+			return []
+		return [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+	return []
+
+
+def get_oqc_plan_status(check) -> str:
+	release_status = check.get("release_status")
+	if release_status in ("Released", "Blocked", "Temporary Released"):
+		return release_status
+	if cint(check.get("docstatus")) == 1:
+		if check.get("overall_status") == "Rejected":
+			return "Rejected"
+		if check.get("overall_status") in PASSING_STATUSES:
+			return "Accepted"
+	return "In Progress"
+
+
+def apply_delivery_plan_oqc_status(status_by_row: dict[str, str], row_names: list[str], status: str) -> None:
+	priority = {
+		"Not Started": 0,
+		"Accepted": 10,
+		"Released": 20,
+		"Temporary Released": 30,
+		"In Progress": 40,
+		"Rejected": 50,
+		"Blocked": 60,
+	}
+	for row_name in row_names:
+		if not row_name or row_name not in status_by_row:
+			continue
+		current = status_by_row.get(row_name) or "Not Started"
+		if priority.get(status, 0) >= priority.get(current, 0):
+			status_by_row[row_name] = status
 
 
 def get_quality_print_format(inspection_context: str, doctype: str) -> str | None:

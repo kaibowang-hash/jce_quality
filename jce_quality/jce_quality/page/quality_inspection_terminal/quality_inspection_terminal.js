@@ -22,6 +22,8 @@ const DRAWING_WIDTH_KEY = "jce_quality_terminal_drawing_width";
 const PDFJS_SRC = "/assets/jce_quality/vendor/pdfjs/pdf.min.js";
 const PDFJS_WORKER = "/assets/jce_quality/vendor/pdfjs/pdf.worker.min.js";
 const PRODUCTION_QUALITY_NODES = ["First Article", "Patrol", "Last Article", "Final Release"];
+const OQC_SOURCE_TYPES = ["Delivery Note OQC", "Delivery Plan OQC"];
+const JCE_TERMINAL_OQC_STATE_KEY = "jce_quality_terminal_oqc_filters";
 
 class QualityInspectionTerminal {
 	constructor(page, wrapper) {
@@ -39,11 +41,25 @@ class QualityInspectionTerminal {
 			shift_type: "",
 			work_order_scheduling: "",
 		};
+		this.canUseDeliveryPlan = can_read_doctype("Delivery Plan");
+		this.oqcFilters = {
+			source_type: "Delivery Note",
+			from_date: frappe.datetime.add_days(frappe.datetime.get_today(), -7),
+			to_date: frappe.datetime.get_today(),
+			customer: "",
+			delivery_note: "",
+			delivery_plan: "",
+		};
+		Object.assign(this.oqcFilters, this.get_stored_oqc_filters());
+		this.normalize_oqc_filters();
 		this.drawingWidth = this.get_stored_drawing_width();
 		this.drawing_state = {};
 		this.defect_options = [];
 		this.pdfjs_promise = null;
 		this.tasks = [];
+		this.oqcDeliveryNotes = [];
+		this.oqcItems = [];
+		this.oqcControls = {};
 		this.refreshRequestId = 0;
 		this.refreshTimer = null;
 		this.filtersRendered = false;
@@ -51,6 +67,7 @@ class QualityInspectionTerminal {
 		this.nativeFullscreenRequested = false;
 		this.defectControlCounter = 0;
 		this.ngActionDialogShown = new Set();
+		this.returnMode = "task-list";
 		const routeOptions = clean_route_options(frappe.route_options || {});
 		frappe.route_options = null;
 		this.initialCheckName = routeOptions.check_name || "";
@@ -60,7 +77,7 @@ class QualityInspectionTerminal {
 	}
 
 	setup() {
-		this.page.set_primary_action(__("Refresh"), () => this.refresh());
+		this.page.set_primary_action(__("Refresh"), () => this.refresh(), "es-line-reload");
 		this.body = $(`<div class="jce-q-terminal"></div>`).appendTo(this.page.body);
 		this.inject_style();
 		this.install_pwa_head();
@@ -79,11 +96,17 @@ class QualityInspectionTerminal {
 		frappe.route_options = null;
 		if (!Object.keys(routeOptions).length) return false;
 		const checkName = routeOptions.check_name || "";
+		const targetMode = routeOptions.mode || "";
 		delete routeOptions.check_name;
+		delete routeOptions.mode;
 		this.apply_filter_route_options(routeOptions);
 		this.sync_filter_controls();
 		if (checkName) {
 			this.open_check_by_name(checkName, null);
+			return true;
+		}
+		if (targetMode === "oqc") {
+			this.render_oqc_terminal_view();
 			return true;
 		}
 		return false;
@@ -107,6 +130,9 @@ class QualityInspectionTerminal {
 	}
 
 	refresh() {
+		if (this.mode === "oqc") {
+			return this.refresh_oqc_delivery_notes();
+		}
 		const requestId = ++this.refreshRequestId;
 		clearTimeout(this.refreshTimer);
 		frappe.dom?.unfreeze?.();
@@ -208,7 +234,7 @@ class QualityInspectionTerminal {
 		this.body.find('[data-action="fullscreen"]').on("click", () => this.toggle_fullscreen());
 		this.body.find('[data-action="dismiss-pwa-hint"]').on("click", () => this.dismiss_pwa_hint());
 		this.body.find('[data-action="manual-check"]').on("click", () => this.open_manual_check_dialog());
-		this.body.find('[data-action="oqc-check"]').on("click", () => frappe.set_route("quality-oqc-terminal"));
+		this.body.find('[data-action="oqc-check"]').on("click", () => this.render_oqc_terminal_view());
 		this.render_filters();
 		this.render_tasks();
 	}
@@ -523,118 +549,364 @@ class QualityInspectionTerminal {
 		`;
 	}
 
-	open_oqc_dialog() {
-		const can_use_delivery_plan = frappe.model.can_read("Delivery Plan");
-		const fields = [
-			{ fieldname: "source_type", fieldtype: "Select", label: __("Source"), options: can_use_delivery_plan ? "Delivery Note\nDelivery Plan" : "Delivery Note", default: "Delivery Note" },
-			{ fieldname: "delivery_note", fieldtype: "Link", options: "Delivery Note", label: __("Delivery Note") },
-		];
-		if (can_use_delivery_plan) {
-			fields.push({ fieldname: "delivery_plan", fieldtype: "Link", options: "Delivery Plan", label: __("Delivery Plan"), depends_on: "eval:doc.source_type=='Delivery Plan'" });
-		}
-		fields.push({ fieldname: "items_html", fieldtype: "HTML" });
-		const d = new frappe.ui.Dialog({
-			title: __("OQC Shipping Inspection"),
-			size: "large",
-			fields,
-			primary_action_label: __("Load"),
-			primary_action: () => this.load_oqc_dialog_items(d),
+	render_oqc_terminal_view(options = {}) {
+		this.mode = "oqc";
+		this.returnMode = "oqc";
+		this.drawerOpen = false;
+		this.selectedTask = null;
+		this.current = null;
+		this.oqcControls = {};
+		this.body.removeClass("jce-terminal-focus");
+		this.update_fullscreen_class(true);
+		this.body.html(`
+			<div class="jce-q-task-shell jce-q-oqc-shell">
+				<section class="jce-q-list-header">
+					<div class="jce-q-toolbar-left">
+						<div class="jce-q-nav-buttons">
+							<button class="jce-q-small-button icon" data-action="back-to-tasks" title="${__("Tasks")}" aria-label="${__("Tasks")}">${icon_html("chevron-left")}</button>
+						</div>
+						<div>
+							<span class="jce-q-eyebrow">${__("Quality Inspection")}</span>
+							<h2>${__("OQC Shipping Inspection")}</h2>
+						</div>
+					</div>
+					<div class="jce-q-list-actions">
+						<button class="jce-q-small-button primary" data-action="oqc-load">${__("Load")}</button>
+						${this.fullscreen_toolbar_button()}
+					</div>
+				</section>
+				<section class="jce-q-filter-panel oqc">
+					<div class="jce-q-filter-title">${__("Filters")}</div>
+					<div class="jce-q-toolbar jce-q-oqc-toolbar"></div>
+				</section>
+				<section class="jce-q-oqc-workspace">
+					<div class="jce-q-panel jce-q-oqc-list-panel">
+						<div class="jce-q-section-head">
+							<div>
+								<span>${__("Delivery Note List")}</span>
+								<b>${__("Deliveries")}</b>
+							</div>
+							<span class="jce-q-pill jce-q-oqc-count">0</span>
+						</div>
+						<div class="jce-q-oqc-delivery-list"></div>
+					</div>
+					<div class="jce-q-panel jce-q-oqc-items-panel">
+						<div class="jce-q-section-head">
+							<div>
+								<span>${__("OQC Items")}</span>
+								<b>${esc(this.oqcFilters.delivery_note || __("Select Delivery Note."))}</b>
+							</div>
+							<button class="jce-q-small-button" data-action="clear-delivery-note">${__("Back to Delivery Note List")}</button>
+						</div>
+						<div class="jce-q-oqc-items"></div>
+					</div>
+				</section>
+			</div>
+		`);
+		this.update_fullscreen_class(true);
+		this.body.find('[data-action="fullscreen"]').on("click", () => this.toggle_fullscreen());
+		this.body.find('[data-action="back-to-tasks"]').on("click", () => {
+			this.returnMode = "task-list";
+			this.render_task_list_view();
+			this.refresh();
 		});
-		d.show();
-		d.get_field("delivery_note").$input.on("change", () => this.load_oqc_dialog_items(d));
-		d.get_field("delivery_plan")?.$input.on("change", () => this.load_oqc_dialog_items(d));
+		this.body.find('[data-action="oqc-load"]').on("click", () => this.refresh_oqc_delivery_notes());
+		this.body.find('[data-action="clear-delivery-note"]').on("click", () => this.select_oqc_delivery_note(""));
+		this.render_oqc_filters();
+		if (options.refresh !== false) {
+			this.refresh_oqc_delivery_notes();
+		}
 	}
 
-	load_oqc_dialog_items(d) {
-		if (d.get_value("source_type") === "Delivery Plan") {
-			const delivery_plan = d.get_value("delivery_plan");
-			if (!delivery_plan) return;
-			const holder = d.get_field("items_html").$wrapper;
-			holder.html(`<div class="jce-q-empty compact">${__("Loading...")}</div>`);
-			return frappe.call({
-				method: "jce_quality.api.quality.get_delivery_plan_delivery_notes",
-				args: { delivery_plan },
-			}).then((r) => {
-				const rows = r.message || [];
-				holder.html(this.render_delivery_plan_notes(rows));
-				holder.find("[data-delivery-note]").on("click", (event) => {
-					d.set_value("source_type", "Delivery Note");
-					d.set_value("delivery_note", event.currentTarget.dataset.deliveryNote);
-					this.load_oqc_dialog_items(d);
-				});
-			});
+	get_stored_oqc_filters() {
+		try {
+			return JSON.parse(localStorage.getItem(JCE_TERMINAL_OQC_STATE_KEY) || "{}") || {};
+		} catch (error) {
+			console.error(error);
+			return {};
 		}
-		const delivery_note = d.get_value("delivery_note");
-		if (!delivery_note) return;
-		const holder = d.get_field("items_html").$wrapper;
-		holder.html(`<div class="jce-q-empty compact">${__("Loading...")}</div>`);
+	}
+
+	store_oqc_filters() {
+		try {
+			localStorage.setItem(JCE_TERMINAL_OQC_STATE_KEY, JSON.stringify(this.oqcFilters));
+		} catch (error) {
+			console.error(error);
+		}
+	}
+
+	normalize_oqc_filters() {
+		if (!this.canUseDeliveryPlan && this.oqcFilters.source_type === "Delivery Plan") {
+			this.oqcFilters.source_type = "Delivery Note";
+			this.oqcFilters.delivery_plan = "";
+		}
+		this.oqcFilters.source_type = this.oqcFilters.source_type || "Delivery Note";
+	}
+
+	render_oqc_filters() {
+		const toolbar = this.body.find(".jce-q-oqc-toolbar");
+		toolbar.empty();
+		const sourceOptions = this.canUseDeliveryPlan ? "Delivery Note\nDelivery Plan" : "Delivery Note";
+		const fields = [
+			{ fieldname: "source_type", label: __("Source"), fieldtype: "Select", options: sourceOptions, default: this.oqcFilters.source_type },
+			{ fieldname: "delivery_note", label: __("Delivery Note"), fieldtype: "Link", options: "Delivery Note", default: this.oqcFilters.delivery_note },
+			{ fieldname: "delivery_plan", label: __("Delivery Plan"), fieldtype: "Link", options: "Delivery Plan", default: this.oqcFilters.delivery_plan },
+			{ fieldname: "customer", label: __("Customer"), fieldtype: "Link", options: "Customer", default: this.oqcFilters.customer },
+			{ fieldname: "from_date", label: __("From Date"), fieldtype: "Date", default: this.oqcFilters.from_date },
+			{ fieldname: "to_date", label: __("To Date"), fieldtype: "Date", default: this.oqcFilters.to_date },
+		];
+		fields.forEach((df) => {
+			if (df.fieldname === "delivery_plan" && !this.canUseDeliveryPlan) return;
+			const holder = $('<div class="jce-q-filter"></div>').appendTo(toolbar);
+			const control = frappe.ui.form.make_control({ parent: holder, df, render_input: true });
+			control.set_value(df.default || "");
+			control.$input.on("change", () => {
+				this.oqcFilters[df.fieldname] = control.get_value() || "";
+				if (df.fieldname === "source_type") {
+					this.oqcFilters.delivery_note = "";
+					this.normalize_oqc_filters();
+					this.sync_oqc_controls();
+				}
+				if (df.fieldname === "delivery_plan") {
+					this.oqcFilters.delivery_note = "";
+					this.oqcControls.delivery_note?.set_value("");
+				}
+				if (df.fieldname === "delivery_note") {
+					this.select_oqc_delivery_note(control.get_value(), { refreshList: true });
+				} else {
+					this.store_oqc_filters();
+					this.update_oqc_filter_visibility();
+				}
+			});
+			this.oqcControls[df.fieldname] = control;
+		});
+		this.update_oqc_filter_visibility();
+	}
+
+	sync_oqc_controls() {
+		Object.entries(this.oqcControls || {}).forEach(([fieldname, control]) => {
+			control.set_value(this.oqcFilters[fieldname] || "");
+		});
+		this.update_oqc_filter_visibility();
+	}
+
+	update_oqc_filter_visibility() {
+		const sourceType = this.oqcFilters.source_type || "Delivery Note";
+		this.oqcControls.delivery_plan?.$wrapper.toggle(this.canUseDeliveryPlan && sourceType === "Delivery Plan");
+	}
+
+	refresh_oqc_delivery_notes() {
+		this.normalize_oqc_filters();
+		this.store_oqc_filters();
+		this.render_oqc_delivery_loading();
+		if (this.oqcFilters.source_type === "Delivery Plan" && !this.oqcFilters.delivery_plan) {
+			this.oqcDeliveryNotes = [];
+			this.render_oqc_delivery_notes([]);
+			this.render_oqc_items_empty(__("Select Delivery Plan."));
+			return Promise.resolve();
+		}
+		this.body.find(".jce-q-oqc-items-panel .jce-q-section-head b").text(
+			this.oqcFilters.delivery_note || this.oqcFilters.delivery_plan || __("Select Delivery Note.")
+		);
+		return frappe.call({
+			method: "jce_quality.api.quality.get_delivery_oqc_delivery_notes",
+			args: {
+				from_date: this.oqcFilters.from_date,
+				to_date: this.oqcFilters.to_date,
+				customer: this.oqcFilters.customer,
+				delivery_note: this.oqcFilters.delivery_note,
+				delivery_plan: this.oqcFilters.source_type === "Delivery Plan" ? this.oqcFilters.delivery_plan : "",
+			},
+			freeze: true,
+			freeze_message: __("Loading Delivery Notes..."),
+		}).then((r) => {
+			this.oqcDeliveryNotes = r.message || [];
+			this.render_oqc_delivery_notes(this.oqcDeliveryNotes);
+			if (this.oqcFilters.delivery_note) {
+				return this.load_oqc_items(this.oqcFilters.delivery_note);
+			}
+			if (this.oqcFilters.source_type === "Delivery Plan" && this.oqcFilters.delivery_plan && !this.oqcDeliveryNotes.length) {
+				return this.load_delivery_plan_oqc_items(this.oqcFilters.delivery_plan);
+			}
+			this.render_oqc_items_empty(__("Select Delivery Note."));
+		}).catch((error) => {
+			console.error(error);
+			this.body.find(".jce-q-oqc-delivery-list").html(`<div class="jce-q-empty compact">${__("Unable to load Delivery Notes.")}</div>`);
+		});
+	}
+
+	render_oqc_delivery_loading() {
+		this.body.find(".jce-q-oqc-count").text("...");
+		this.body.find(".jce-q-oqc-delivery-list").html(`<div class="jce-q-empty compact">${__("Loading...")}</div>`);
+	}
+
+	render_oqc_delivery_notes(rows) {
+		this.body.find(".jce-q-oqc-count").text(rows.length);
+		const list = this.body.find(".jce-q-oqc-delivery-list");
+		if (!rows.length) {
+			const message = this.oqcFilters.source_type === "Delivery Plan" && this.oqcFilters.delivery_plan
+				? __("No Delivery Notes linked. Showing Delivery Plan items.")
+				: __("No Delivery Notes found.");
+			list.html(`<div class="jce-q-empty compact">${message}</div>`);
+			return;
+		}
+		list.html(rows.map((row) => {
+			const active = row.name === this.oqcFilters.delivery_note ? "active" : "";
+			return `
+				<button class="jce-q-oqc-row jce-q-oqc-delivery-row ${active}" data-delivery-note="${esc(row.name || "")}">
+					<div>
+						<b>${esc(row.name || "")}</b>
+						<span>${esc(row.customer || "-")}</span>
+						<em>${esc(row.posting_date || "-")} · ${esc(row.status || "-")}</em>
+					</div>
+					<span class="jce-q-pill">${esc(row.company || "-")}</span>
+				</button>
+			`;
+		}).join(""));
+		list.find("[data-delivery-note]").on("click", (event) => {
+			this.select_oqc_delivery_note(event.currentTarget.dataset.deliveryNote);
+		});
+	}
+
+	select_oqc_delivery_note(deliveryNote, options = {}) {
+		this.oqcFilters.delivery_note = deliveryNote || "";
+		this.oqcControls.delivery_note?.set_value(this.oqcFilters.delivery_note);
+		this.store_oqc_filters();
+		this.render_oqc_delivery_notes(this.oqcDeliveryNotes || []);
+		this.body.find(".jce-q-oqc-items-panel .jce-q-section-head b").text(this.oqcFilters.delivery_note || __("Select Delivery Note."));
+		if (!this.oqcFilters.delivery_note) {
+			if (
+				this.oqcFilters.source_type === "Delivery Plan"
+				&& this.oqcFilters.delivery_plan
+				&& !(this.oqcDeliveryNotes || []).length
+			) {
+				this.body.find(".jce-q-oqc-items-panel .jce-q-section-head b").text(this.oqcFilters.delivery_plan);
+				this.load_delivery_plan_oqc_items(this.oqcFilters.delivery_plan);
+			} else {
+				this.render_oqc_items_empty(__("Select Delivery Note."));
+			}
+			if (options.refreshList) this.refresh_oqc_delivery_notes();
+			return;
+		}
+		if (options.refreshList) {
+			this.refresh_oqc_delivery_notes();
+			return;
+		}
+		this.load_oqc_items(this.oqcFilters.delivery_note);
+	}
+
+	load_oqc_items(deliveryNote) {
+		this.body.find(".jce-q-oqc-items").html(`<div class="jce-q-empty compact">${__("Loading...")}</div>`);
 		return frappe.call({
 			method: "jce_quality.api.quality.get_delivery_oqc_items",
-			args: { delivery_note },
+			args: { delivery_note: deliveryNote },
+			freeze: true,
+			freeze_message: __("Loading OQC Items..."),
 		}).then((r) => {
-			const rows = r.message || [];
-			holder.html(this.render_oqc_items(rows));
-			holder.find("[data-oqc-open]").on("click", (event) => {
-				const button = $(event.currentTarget);
-				frappe.call({
-					method: "jce_quality.api.quality.get_or_create_delivery_oqc_check",
-					args: {
-						delivery_note,
-						item_code: button.data("itemCode"),
-						warehouse: button.data("warehouse") || "",
-						uom: button.data("uom") || "",
-					},
-					freeze: true,
-					freeze_message: __("Opening OQC..."),
-				}).then((response) => {
-					d.hide();
-					this.selectedTask = null;
-					this.current = response.message;
-					this.enter_focus_mode();
-				});
-			});
+			this.oqcItems = r.message || [];
+			this.render_oqc_items(this.oqcItems);
+		}).catch((error) => {
+			console.error(error);
+			this.render_oqc_items_empty(__("Unable to load OQC Items."));
 		});
 	}
 
-	render_delivery_plan_notes(rows) {
-		if (!rows.length) return `<div class="jce-q-empty compact">${__("No Delivery Notes linked to this Delivery Plan.")}</div>`;
-		return `
-			<div class="jce-q-oqc-list">
-				${rows.map((row) => `
-					<div class="jce-q-oqc-row">
-						<div>
-							<b>${esc(row.name || "")}</b>
-							<span>${esc(row.customer || "")}</span>
-							<em>${esc(row.posting_date || "-")} · ${esc(row.status || "")}</em>
-						</div>
-						<button class="jce-q-small-button primary" data-delivery-note="${esc(row.name)}">${__("Use Delivery Note")}</button>
-					</div>
-				`).join("")}
-			</div>
-		`;
+	load_delivery_plan_oqc_items(deliveryPlan) {
+		this.body.find(".jce-q-oqc-items-panel .jce-q-section-head b").text(deliveryPlan || __("Select Delivery Plan."));
+		this.body.find(".jce-q-oqc-items").html(`<div class="jce-q-empty compact">${__("Loading...")}</div>`);
+		return frappe.call({
+			method: "jce_quality.api.quality.get_delivery_plan_oqc_items",
+			args: { delivery_plan: deliveryPlan },
+			freeze: true,
+			freeze_message: __("Loading OQC Items..."),
+		}).then((r) => {
+			this.oqcItems = r.message || [];
+			this.render_oqc_items(this.oqcItems);
+		}).catch((error) => {
+			console.error(error);
+			this.render_oqc_items_empty(__("Unable to load OQC Items."));
+		});
+	}
+
+	render_oqc_items_empty(message) {
+		this.body.find(".jce-q-oqc-items").html(`<div class="jce-q-empty compact">${esc(message)}</div>`);
 	}
 
 	render_oqc_items(rows) {
-		if (!rows.length) return `<div class="jce-q-empty compact">${__("No Delivery Note items found.")}</div>`;
-		return `
+		const holder = this.body.find(".jce-q-oqc-items");
+		if (!rows.length) {
+			holder.html(`<div class="jce-q-empty compact">${__("No Delivery Note items found.")}</div>`);
+			return;
+		}
+		holder.html(`
 			<div class="jce-q-oqc-list">
-				${rows.map((row) => `
-					<div class="jce-q-oqc-row">
-						<div>
-							<b>${esc(row.item_code || "")}</b>
-							<span>${esc(row.item_name || "")}</span>
-							<em>${esc(row.warehouse || "-")} · ${esc(row.uom || "-")} · ${format_float(row.qty || 0)}</em>
-						</div>
-						<div>
-							<span class="jce-q-pill">${esc(inspection_status_label(row.overall_status || "Pending"))}</span>
-							<button class="jce-q-small-button primary" data-oqc-open="1" data-item-code="${esc(row.item_code || "")}" data-warehouse="${esc(row.warehouse || "")}" data-uom="${esc(row.uom || "")}">
-								${row.check_name ? __("Open") : __("Create")}
-							</button>
-						</div>
-					</div>
-				`).join("")}
+				${rows.map((row) => this.render_oqc_item_row(row)).join("")}
+			</div>
+		`);
+		holder.find("[data-oqc-open]").on("click", (event) => {
+			const button = $(event.currentTarget);
+			this.open_terminal_oqc_check({
+				source_type: button.data("sourceType") || "Delivery Note OQC",
+				delivery_note: button.data("deliveryNote") || this.oqcFilters.delivery_note,
+				delivery_plan: button.data("deliveryPlan") || this.oqcFilters.delivery_plan,
+				source_detail: button.data("sourceDetail") || "",
+				item_code: button.data("itemCode"),
+				warehouse: button.data("warehouse") || "",
+				uom: button.data("uom") || "",
+			});
+		});
+	}
+
+	render_oqc_item_row(row) {
+		const hasCheck = !!row.check_name;
+		const sourceType = row.source_type || (row.delivery_plan ? "Delivery Plan OQC" : "Delivery Note OQC");
+		const ruleNote = row.production_quality_rule
+			? `<em>${esc(row.production_quality_rule)}${row.quality_inspection_template ? ` · ${esc(row.quality_inspection_template)}` : ""}</em>`
+			: `<em class="warn">${__("No OQC rule configured. Manual inspection is allowed.")}</em>`;
+		return `
+			<div class="jce-q-oqc-row jce-q-oqc-item-row">
+				<div class="jce-q-oqc-item-main">
+					<b>${esc(row.item_code || "")}</b>
+					<span>${esc(row.item_name || "")}</span>
+					<em>${esc(row.warehouse || "-")} · ${esc(row.uom || "-")} · ${format_float(row.qty || 0)}</em>
+					${ruleNote}
+				</div>
+				<div class="jce-q-oqc-item-actions">
+					<span class="jce-q-pill">${esc(row.check_name || "-")}</span>
+					<span class="jce-q-pill ${status_tone(row.overall_status)}">${esc(inspection_status_label(row.overall_status || "Pending"))}</span>
+					<span class="jce-q-pill ${release_tone(row.release_status)}">${esc(oqc_release_status_label(row.release_status || "Pending"))}</span>
+					<button class="jce-q-small-button primary" data-oqc-open="1" data-source-type="${esc(sourceType)}" data-delivery-note="${esc(row.delivery_note || "")}" data-delivery-plan="${esc(row.delivery_plan || "")}" data-source-detail="${esc(row.source_detail || "")}" data-item-code="${esc(row.item_code || "")}" data-warehouse="${esc(row.warehouse || "")}" data-uom="${esc(row.uom || "")}">
+						${hasCheck ? __("Open OQC") : __("Create OQC")}
+					</button>
+				</div>
 			</div>
 		`;
+	}
+
+	open_terminal_oqc_check(args) {
+		const isDeliveryPlanOqc = args.source_type === "Delivery Plan OQC";
+		const method = isDeliveryPlanOqc
+			? "jce_quality.api.quality.get_or_create_delivery_plan_oqc_check"
+			: "jce_quality.api.quality.get_or_create_delivery_oqc_check";
+		const callArgs = isDeliveryPlanOqc
+			? { delivery_plan: args.delivery_plan, source_detail: args.source_detail }
+			: {
+				delivery_note: args.delivery_note,
+				item_code: args.item_code,
+				warehouse: args.warehouse,
+				uom: args.uom,
+			};
+		frappe.call({
+			method,
+			args: callArgs,
+			freeze: true,
+			freeze_message: __("Opening OQC..."),
+		}).then((r) => {
+			if (!r.message?.name) return;
+			this.selectedTask = null;
+			this.current = r.message;
+			this.enter_focus_mode();
+		});
 	}
 
 	switch_patrol_history(direction) {
@@ -684,6 +956,9 @@ class QualityInspectionTerminal {
 	}
 
 	enter_focus_mode() {
+		if (this.mode !== "focus") {
+			this.returnMode = this.mode || "task-list";
+		}
 		this.mode = "focus";
 		this.drawerOpen = false;
 		this.activePane = "inspection";
@@ -695,6 +970,10 @@ class QualityInspectionTerminal {
 
 	exit_focus_mode() {
 		this.current = null;
+		if (this.returnMode === "oqc") {
+			this.render_oqc_terminal_view({ refresh: true });
+			return;
+		}
 		this.render_task_list_view();
 		this.refresh();
 	}
@@ -917,6 +1196,10 @@ class QualityInspectionTerminal {
 		return `<div class="jce-q-info-item"><span>${esc(label)}</span><b>${esc(value || "-")}</b></div>`;
 	}
 
+	is_oqc_check(doc) {
+		return !!doc && (doc.quality_node === "OQC" || OQC_SOURCE_TYPES.includes(doc.source_type));
+	}
+
 	render_sample_meta(doc) {
 		const items = [
 			[__("Required Type"), doc.required_sample_type || "-"],
@@ -994,6 +1277,9 @@ class QualityInspectionTerminal {
 	}
 
 	render_quick_actions(doc) {
+		if (this.is_oqc_check(doc)) {
+			return "";
+		}
 		if (doc.overall_status !== "Rejected") {
 			return "";
 		}
@@ -1042,6 +1328,9 @@ class QualityInspectionTerminal {
 	}
 
 	render_ng_disposition_panel(doc) {
+		if (this.is_oqc_check(doc)) {
+			return "";
+		}
 		const should_show = doc.overall_status === "Rejected" || doc.overall_status === "Concession Released" || doc.disposition || cint(doc.release_approved);
 		if (!should_show) return "";
 		const state = this.get_ng_disposition_state(doc);
@@ -1114,29 +1403,33 @@ class QualityInspectionTerminal {
 	}
 
 	render_oqc_release_panel(doc) {
-		if (doc.source_type !== "Delivery Note OQC") return "";
+		if (!this.is_oqc_check(doc)) return "";
 		const status = doc.release_status || "Pending";
 		const permissions = doc.terminal_permissions || {};
 		const submitted = cint(doc.docstatus) === 1;
+		const sourceSubmitted = doc.oqc_source_submitted !== false;
 		const passing = ["Accepted", "Concession Released"].includes(doc.overall_status);
 		const rejected = doc.overall_status === "Rejected";
 		const buttons = [];
-		if (submitted && passing && permissions.can_oqc_release) {
+		if (submitted && sourceSubmitted && passing && permissions.can_oqc_release) {
 			buttons.push(`<button class="jce-q-bar-button primary" data-action="oqc-release" data-release-status="Released">${__("Release")}</button>`);
 		}
-		if (submitted && passing && permissions.can_oqc_temporary_release) {
+		if (submitted && sourceSubmitted && passing && permissions.can_oqc_temporary_release) {
 			buttons.push(`<button class="jce-q-bar-button warn" data-action="oqc-release" data-release-status="Temporary Released">${__("Temporary Release")}</button>`);
 		}
-		if (submitted && rejected && permissions.can_oqc_block) {
+		if (submitted && sourceSubmitted && rejected && permissions.can_oqc_block) {
 			buttons.push(`<button class="jce-q-bar-button danger" data-action="oqc-release" data-release-status="Blocked">${__("Block")}</button>`);
 		}
 		const help = !submitted
 			? __("Submit the OQC check before release.")
-			: rejected
+			: !sourceSubmitted
+				? __("Submit the Delivery Note before final OQC release actions.")
+				: rejected
 				? __("Rejected OQC can be blocked or escalated by an authorized user.")
 				: passing
 					? __("Waiting for an authorized user to release OQC.")
 					: __("OQC release is available after accepted inspection.");
+		const sourceLabel = doc.source_doctype || __("Source");
 		return `
 			<section class="jce-q-panel jce-q-disposition-panel">
 				<div class="jce-q-section-head">
@@ -1147,7 +1440,8 @@ class QualityInspectionTerminal {
 					<span class="jce-q-pill ${status === "Released" ? "ok" : status === "Blocked" ? "danger" : "warn"}">${esc(oqc_release_status_label(status))}</span>
 				</div>
 				<div class="jce-q-info-grid">
-					${this.render_info_item(__("Delivery Note"), doc.source_name || "-")}
+					${this.render_info_item(__(sourceLabel), doc.source_name || "-")}
+					${this.render_info_item(__("Source Status"), doc.oqc_source_status || doc.oqc_source_docstatus || "-")}
 					${this.render_info_item(__("Source Detail"), doc.source_detail || "-")}
 					${this.render_info_item(__("Escalated DMR"), doc.escalated_dmr || "-")}
 				</div>
@@ -1261,6 +1555,7 @@ class QualityInspectionTerminal {
 
 	maybe_auto_open_ng_actions() {
 		if (!this.current || this.current.overall_status !== "Rejected") return;
+		if (this.is_oqc_check(this.current)) return;
 		if (this.ngActionDialogShown.has(this.current.name)) return;
 		this.ngActionDialogShown.add(this.current.name);
 		setTimeout(() => this.open_ng_action_dialog({ automatic: true }), 220);
@@ -1268,6 +1563,7 @@ class QualityInspectionTerminal {
 
 	open_ng_action_dialog() {
 		if (!this.current || this.current.overall_status !== "Rejected") return;
+		if (this.is_oqc_check(this.current)) return;
 		const action_note = this.build_action_note(this.current);
 		this.open_terminal_sheet({
 			title: __("NG Quick Actions"),
@@ -4087,10 +4383,37 @@ class QualityInspectionTerminal {
 					line-height: 1.3;
 					overflow-wrap: anywhere;
 				}
+				.jce-q-oqc-shell .jce-q-list-header {
+					align-items: center;
+				}
+				.jce-q-filter-panel.oqc {
+					align-items: flex-end;
+				}
+				.jce-q-oqc-toolbar {
+					display: grid;
+					grid-template-columns: repeat(6, minmax(140px, 1fr));
+					gap: 8px;
+					width: 100%;
+				}
+				.jce-q-oqc-workspace {
+					display: grid;
+					grid-template-columns: minmax(280px, 370px) minmax(0, 1fr);
+					gap: 10px;
+				}
+				.jce-q-oqc-list-panel,
+				.jce-q-oqc-items-panel {
+					min-height: min(66dvh, 620px);
+					margin-bottom: 0;
+				}
+				.jce-q-oqc-delivery-list,
+				.jce-q-oqc-items {
+					display: grid;
+					gap: 8px;
+				}
 				.jce-q-oqc-list {
 					display: grid;
 					gap: 8px;
-					max-height: min(58dvh, 520px);
+					max-height: min(62dvh, 620px);
 					overflow: auto;
 					padding-right: 2px;
 				}
@@ -4104,12 +4427,43 @@ class QualityInspectionTerminal {
 					border-radius: 8px;
 					background: #fff;
 				}
-				.jce-q-oqc-row b,
-				.jce-q-oqc-row span,
-				.jce-q-oqc-row em {
+				.jce-q-oqc-delivery-row {
+					width: 100%;
+					text-align: left;
+					cursor: pointer;
+					transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+				}
+				.jce-q-oqc-delivery-row.active {
+					border-color: rgba(0, 113, 227, 0.36);
+					box-shadow: inset 3px 0 0 var(--jce-blue);
+				}
+				.jce-q-oqc-delivery-row:hover {
+					transform: translateY(-1px);
+					border-color: rgba(0, 113, 227, 0.24);
+				}
+				.jce-q-oqc-item-row {
+					align-items: flex-start;
+				}
+				.jce-q-oqc-item-main {
+					min-width: 0;
+				}
+				.jce-q-oqc-item-main .warn {
+					color: var(--jce-orange);
+					font-weight: 750;
+				}
+				.jce-q-oqc-item-actions {
+					display: flex;
+					align-items: center;
+					justify-content: flex-end;
+					flex-wrap: wrap;
+					gap: 6px;
+				}
+				.jce-q-oqc-row > div > b,
+				.jce-q-oqc-row > div > span,
+				.jce-q-oqc-row > div > em {
 					display: block;
 				}
-				.jce-q-oqc-row em {
+				.jce-q-oqc-row > div > em {
 					color: var(--jce-muted);
 					font-style: normal;
 					font-size: 12px;
@@ -4494,6 +4848,12 @@ class QualityInspectionTerminal {
 					.jce-q-result-controls,
 					.jce-q-disposition-grid,
 					.jce-q-defect-row { grid-template-columns: 1fr; }
+					.jce-q-oqc-toolbar {
+						grid-template-columns: repeat(2, minmax(0, 1fr));
+					}
+					.jce-q-oqc-workspace {
+						grid-template-columns: 1fr;
+					}
 					.jce-q-system-result { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 					.jce-q-toolbar-actions .jce-q-bar-button { flex: 1 1 calc(50% - 8px); }
 					.jce-q-patrol-history-row { grid-template-columns: 72px 54px minmax(0, 1fr); }
@@ -4529,6 +4889,14 @@ class QualityInspectionTerminal {
 					.jce-q-nav-buttons { width: 100%; }
 					.jce-q-nav-buttons button { flex: 1; }
 					.jce-q-toolbar-actions .jce-q-bar-button { flex-basis: 100%; }
+					.jce-q-oqc-toolbar {
+						grid-template-columns: 1fr;
+					}
+					.jce-q-oqc-row,
+					.jce-q-oqc-item-actions {
+						align-items: stretch;
+						flex-direction: column;
+					}
 				}
 			</style>`).appendTo(document.head);
 	}
@@ -4543,33 +4911,26 @@ function form_url(doctype, name) {
 	return `/app/${slug}/${encodeURIComponent(name)}`;
 }
 
-const JCE_ICONS = {
-	"alert-triangle": '<path d="M10.3 3.7 2.6 17a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.7a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
-	camera: '<path d="M14.5 4 16 6h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3l1.5-2h5Z"/><circle cx="12" cy="13" r="3.5"/>',
-	"chevron-left": '<path d="m15 18-6-6 6-6"/>',
-	"chevron-right": '<path d="m9 18 6-6-6-6"/>',
-	"external-link": '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
-	"file-text": '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/>',
-	list: '<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>',
-	"maximize-2": '<path d="M15 3h6v6"/><path d="m21 3-7 7"/><path d="M9 21H3v-6"/><path d="m3 21 7-7"/>',
-	"minimize-2": '<path d="M4 14h6v6"/><path d="m10 14-7 7"/><path d="M20 10h-6V4"/><path d="m14 10 7-7"/>',
-	"move-horizontal": '<path d="m18 8 4 4-4 4"/><path d="M2 12h20"/><path d="m6 8-4 4 4 4"/>',
-	plus: '<path d="M12 5v14"/><path d="M5 12h14"/>',
-	"refresh-cw": '<path d="M21 12a9 9 0 0 1-15.5 6.2"/><path d="M3 12A9 9 0 0 1 18.5 5.8"/><path d="M18 2v4h4"/><path d="M6 22v-4H2"/>',
-	"rotate-ccw": '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v6h6"/>',
-	square: '<rect x="5" y="5" width="14" height="14" rx="1"/>',
-	circle: '<circle cx="12" cy="12" r="8"/>',
-	truck: '<path d="M10 17H6a2 2 0 0 1-2-2V6h11v11"/><path d="M15 9h3l3 4v4h-3"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/>',
-	"trash-2": '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>',
-	"undo-2": '<path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 1 1 0 12h-1"/>',
-	x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
-	"zoom-in": '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/><path d="M11 8v6"/><path d="M8 11h6"/>',
-	"zoom-out": '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/><path d="M8 11h6"/>',
+const JCE_ICON_ALIASES = {
+	"alert-triangle": "es-solid-alert-triangle",
+	camera: "es-line-camera",
+	"chevron-left": "es-line-left-chevron",
+	"chevron-right": "es-line-right-chevron",
+	"external-link": "es-solid-external-link",
+	"file-text": "es-line-select-file",
+	list: "es-line-bullet-list",
+	"maximize-2": "es-line-expand",
+	"minimize-2": "shrink",
+	"move-horizontal": "arrow-left-right",
+	plus: "es-line-add",
+	"refresh-cw": "es-line-reload",
+	"trash-2": "delete",
+	x: "es-small-close",
 };
 
-function icon_html(icon) {
-	const paths = JCE_ICONS[icon] || JCE_ICONS["alert-triangle"];
-	return `<svg class="jce-q-svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+function icon_html(icon, size = "sm") {
+	const icon_name = JCE_ICON_ALIASES[icon] || icon || "es-solid-alert-triangle";
+	return frappe.utils.icon(icon_name, size, "", "", "jce-q-svg-icon", true);
 }
 
 function clean_value(value) {
@@ -4744,6 +5105,13 @@ function status_tone(status) {
 	return "";
 }
 
+function release_tone(status) {
+	if (status === "Released") return "ok";
+	if (status === "Temporary Released") return "warn";
+	if (status === "Blocked") return "danger";
+	return "";
+}
+
 function inspection_status_label(status) {
 	if (status === "Rejected") return "NG";
 	if (status === "Accepted" || status === "Concession Released") return "OK";
@@ -4758,6 +5126,15 @@ function oqc_release_status_label(status) {
 		Blocked: __("OQC Blocked"),
 	};
 	return labels[status] || __(status || "");
+}
+
+function can_read_doctype(doctype) {
+	try {
+		return frappe.model.can_read(doctype);
+	} catch (error) {
+		console.error(error);
+		return false;
+	}
 }
 
 function get_shift_options() {

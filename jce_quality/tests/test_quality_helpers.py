@@ -5,6 +5,8 @@ import frappe
 
 from jce_quality.services.quality import (
 	DELIVERY_NOTE_OQC_SOURCE_TYPE,
+	DELIVERY_PLAN_OQC_SOURCE_TYPE,
+	apply_rule_to_check,
 	get_required_check_count,
 	is_first_article_required_for_row,
 	is_oqc_check_ready_for_email,
@@ -83,16 +85,65 @@ class TestQualityHelpers(unittest.TestCase):
 			with self.assertRaises(frappe.ValidationError):
 				validate_oqc_release_request(draft, "Released")
 
-			rejected = frappe._dict(source_type=DELIVERY_NOTE_OQC_SOURCE_TYPE, docstatus=1, overall_status="Rejected")
+			rejected = frappe._dict(
+				source_type=DELIVERY_NOTE_OQC_SOURCE_TYPE,
+				source_name="DN-1",
+				docstatus=1,
+				overall_status="Rejected",
+			)
 			with self.assertRaises(frappe.ValidationError):
-				validate_oqc_release_request(rejected, "Released")
-			validate_oqc_release_request(rejected, "Blocked", escalate_to_dmr=True)
+				with patch("jce_quality.services.quality.get_delivery_note_doc"):
+					validate_oqc_release_request(rejected, "Released")
+			with patch("jce_quality.services.quality.get_delivery_note_doc"):
+				validate_oqc_release_request(rejected, "Blocked", escalate_to_dmr=True)
 
-			accepted = frappe._dict(source_type=DELIVERY_NOTE_OQC_SOURCE_TYPE, docstatus=1, overall_status="Accepted")
-			validate_oqc_release_request(accepted, "Released")
+			accepted = frappe._dict(
+				source_type=DELIVERY_NOTE_OQC_SOURCE_TYPE,
+				source_name="DN-1",
+				docstatus=1,
+				overall_status="Accepted",
+			)
+			with patch("jce_quality.services.quality.get_delivery_note_doc") as get_delivery_note_doc:
+				validate_oqc_release_request(accepted, "Released")
+				get_delivery_note_doc.assert_called_with("DN-1", require_submitted=True, allow_return=False)
 			with self.assertRaises(frappe.ValidationError):
-				validate_oqc_release_request(accepted, "Temporary Released")
-			validate_oqc_release_request(accepted, "Temporary Released", temporary_release_note="Customer approval")
+				with patch("jce_quality.services.quality.get_delivery_note_doc"):
+					validate_oqc_release_request(accepted, "Temporary Released")
+			with patch("jce_quality.services.quality.get_delivery_note_doc"):
+				validate_oqc_release_request(accepted, "Temporary Released", temporary_release_note="Customer approval")
+
+	def test_delivery_plan_oqc_final_release_requires_delivery_note(self):
+		def raise_validation(message, *args, **kwargs):
+			raise frappe.ValidationError(message)
+
+		with (
+			patch("jce_quality.services.quality._", lambda text, *args, **kwargs: text),
+			patch("jce_quality.services.quality.frappe.throw", raise_validation),
+		):
+			check = frappe._dict(source_type=DELIVERY_PLAN_OQC_SOURCE_TYPE, docstatus=1, overall_status="Accepted")
+			with self.assertRaises(frappe.ValidationError):
+				validate_oqc_release_request(check, "Released")
+
+	def test_sample_is_optional_without_matching_rule(self):
+		doc = frappe._dict(
+			company="JCE",
+			plant_floor=None,
+			workstation=None,
+			item_code=None,
+			item_group=None,
+			quality_node="OQC",
+			production_quality_rule="OLD-RULE",
+			quality_inspection_template=None,
+			requires_sample=1,
+			required_sample_type="Golden",
+			sample_manager=None,
+		)
+		with patch("jce_quality.services.quality.get_applicable_rule", return_value=None):
+			apply_rule_to_check(doc)
+		self.assertEqual(doc.requires_sample, 0)
+		self.assertIsNone(doc.production_quality_rule)
+		self.assertIsNone(doc.required_sample_type)
+		self.assertIsNone(doc.quality_inspection_template)
 
 	def test_frozen_summary_never_meets_requirements(self):
 		self.assertFalse(

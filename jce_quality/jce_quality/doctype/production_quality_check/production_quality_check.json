@@ -146,13 +146,13 @@
    "fieldtype": "Select",
    "in_standard_filter": 1,
    "label": "Source Type",
-   "options": "Production Scheduling\nManual Production\nDelivery Note OQC"
+   "options": "Production Scheduling\nManual Production\nDelivery Note OQC\nDelivery Plan OQC"
   },
   {
    "fieldname": "source_doctype",
    "fieldtype": "Select",
    "label": "Source DocType",
-   "options": "\nWork Order Scheduling\nDelivery Note"
+   "options": "\nWork Order Scheduling\nDelivery Note\nDelivery Plan"
   },
   {
    "fieldname": "source_name",

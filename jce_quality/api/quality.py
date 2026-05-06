@@ -3,15 +3,19 @@ from frappe import _
 from frappe.utils import now_datetime
 
 from jce_quality.services.quality import (
+	DELIVERY_NOTE_OQC_SOURCE_TYPE,
+	DELIVERY_PLAN_OQC_SOURCE_TYPE,
 	approve_concession_release as approve_concession_release_doc,
 	create_manual_production_check as create_manual_production_check_doc,
 	get_board_data,
 	get_defect_code_options as get_defect_code_option_rows,
 	get_delivery_plan_delivery_notes as get_delivery_plan_delivery_note_rows,
+	get_delivery_plan_oqc_items as get_delivery_plan_oqc_item_rows,
 	get_delivery_oqc_delivery_notes as get_delivery_oqc_delivery_note_rows,
 	get_delivery_oqc_items as get_delivery_oqc_item_rows,
 	get_manual_production_quality_node_options as get_manual_production_quality_node_option_rows,
 	get_oqc_email_package as get_oqc_email_package_doc,
+	get_or_create_delivery_plan_oqc_check as get_or_create_delivery_plan_oqc_check_doc,
 	get_or_create_delivery_oqc_check as get_or_create_delivery_oqc_check_doc,
 	get_quality_analytics_data as get_quality_analytics_data_rows,
 	get_scheduling_quality_node_requirement,
@@ -219,6 +223,15 @@ def get_delivery_oqc_items(delivery_note):
 
 
 @frappe.whitelist()
+def get_delivery_plan_oqc_items(delivery_plan):
+	require_quality_read_access()
+	if not frappe.db.exists("DocType", "Delivery Plan"):
+		frappe.throw(_("Delivery Plan is not available on this site."))
+	check_doctype_document_permission("Delivery Plan", delivery_plan, "read")
+	return get_delivery_plan_oqc_item_rows(delivery_plan)
+
+
+@frappe.whitelist()
 def get_delivery_plan_delivery_notes(delivery_plan):
 	require_quality_read_access()
 	if not frappe.db.exists("DocType", "Delivery Plan"):
@@ -232,6 +245,16 @@ def get_or_create_delivery_oqc_check(delivery_note, item_code, warehouse=None, u
 	require_quality_execution_access()
 	check_doctype_document_permission("Delivery Note", delivery_note, "read")
 	check_name = get_or_create_delivery_oqc_check_doc(delivery_note, item_code, warehouse=warehouse, uom=uom)
+	return get_check_payload(check_name)
+
+
+@frappe.whitelist(methods=["POST"])
+def get_or_create_delivery_plan_oqc_check(delivery_plan, source_detail):
+	require_quality_execution_access()
+	if not frappe.db.exists("DocType", "Delivery Plan"):
+		frappe.throw(_("Delivery Plan is not available on this site."))
+	check_doctype_document_permission("Delivery Plan", delivery_plan, "read")
+	check_name = get_or_create_delivery_plan_oqc_check_doc(delivery_plan, source_detail)
 	return get_check_payload(check_name)
 
 
@@ -287,6 +310,8 @@ def get_check_payload(check_name):
 	payload["related_defect_alerts"] = get_related_defect_alerts(doc)
 	if doc.get("quality_node") == "Patrol":
 		payload.update(build_patrol_history_payload(doc))
+	if doc.get("quality_node") == "OQC" or doc.get("source_type") in (DELIVERY_NOTE_OQC_SOURCE_TYPE, DELIVERY_PLAN_OQC_SOURCE_TYPE):
+		payload.update(get_oqc_source_status_payload(doc))
 	payload["terminal_permissions"] = {
 		"can_temporary_continue": has_terminal_action_access("Temporary Continue") or has_quality_disposition_access(),
 		"can_disposition": has_quality_disposition_access(),
@@ -297,6 +322,40 @@ def get_check_payload(check_name):
 		"can_oqc_escalate_to_dmr": has_terminal_action_access("OQC DMR Escalation"),
 		"can_oqc_email": has_terminal_action_access("OQC Email"),
 	}
+	return payload
+
+
+def get_oqc_source_status_payload(doc):
+	payload = {
+		"oqc_source_submitted": False,
+		"oqc_source_docstatus": None,
+		"oqc_source_status": None,
+		"oqc_source_doctype": doc.get("source_doctype"),
+		"oqc_source_name": doc.get("source_name"),
+	}
+	if doc.get("source_type") == DELIVERY_NOTE_OQC_SOURCE_TYPE and doc.get("source_name") and frappe.db.exists("Delivery Note", doc.source_name):
+		dn = frappe.get_cached_doc("Delivery Note", doc.source_name)
+		payload.update(
+			{
+				"oqc_source_docstatus": dn.docstatus,
+				"oqc_source_status": dn.get("status"),
+				"oqc_source_submitted": dn.docstatus == 1,
+			}
+		)
+	elif (
+		doc.get("source_type") == DELIVERY_PLAN_OQC_SOURCE_TYPE
+		and doc.get("source_name")
+		and frappe.db.exists("DocType", "Delivery Plan")
+		and frappe.db.exists("Delivery Plan", doc.source_name)
+	):
+		plan = frappe.get_cached_doc("Delivery Plan", doc.source_name)
+		payload.update(
+			{
+				"oqc_source_docstatus": plan.docstatus,
+				"oqc_source_status": plan.get("status") or ("Submitted" if plan.docstatus == 1 else "Draft"),
+				"oqc_source_submitted": False,
+			}
+		)
 	return payload
 
 

@@ -8,6 +8,6 @@ def get_data():
 			"type": "module",
 			"label": _("JCE Quality"),
 			"color": "blue",
-			"icon": "octicon octicon-checklist",
+			"icon": "shield-check",
 		}
 	]
