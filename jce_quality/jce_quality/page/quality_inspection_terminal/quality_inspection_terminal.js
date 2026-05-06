@@ -4987,6 +4987,41 @@ class QualityInspectionTerminal {
 						align-items: stretch;
 						flex-direction: column;
 					}
+					.jce-terminal-fullscreen .jce-q-task-shell.jce-q-oqc-shell {
+						display: flex;
+						flex-direction: column;
+						overflow-y: auto;
+						overflow-x: hidden;
+						-webkit-overflow-scrolling: touch;
+					}
+					.jce-q-oqc-shell .jce-q-filter-panel.oqc {
+						margin-bottom: 8px;
+					}
+					.jce-q-oqc-shell .jce-q-oqc-toolbar {
+						grid-template-columns: repeat(2, minmax(0, 1fr));
+						gap: 7px;
+					}
+					.jce-q-oqc-shell .jce-q-oqc-workspace {
+						display: flex;
+						flex: 0 0 auto;
+						flex-direction: column;
+						gap: 8px;
+						height: auto;
+						min-height: 0;
+					}
+					.jce-q-oqc-shell .jce-q-oqc-list-panel {
+						flex: 0 0 auto;
+						min-height: 180px;
+						max-height: 34dvh;
+					}
+					.jce-q-oqc-shell .jce-q-oqc-items-panel {
+						flex: 0 0 auto;
+						min-height: 260px;
+						overflow: visible;
+					}
+					.jce-q-oqc-shell .jce-q-oqc-items {
+						overflow: visible;
+					}
 				}
 			</style>`).appendTo(document.head);
 	}
