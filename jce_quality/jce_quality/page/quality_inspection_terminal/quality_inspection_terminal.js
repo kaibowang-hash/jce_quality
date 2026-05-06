@@ -365,7 +365,7 @@ class QualityInspectionTerminal {
 
 	render_task_node_buttons(task, patrol_status) {
 		return this.get_required_nodes(task)
-			.map((node) => this.node_button(node, this.get_task_node_status(task, node, patrol_status)))
+			.map((node) => this.node_button(node, this.get_task_node_status(task, node, patrol_status), task))
 			.join("");
 	}
 
@@ -410,10 +410,14 @@ class QualityInspectionTerminal {
 		`;
 	}
 
-	node_button(node, status) {
+	node_button(node, status, task = null) {
 		const tone = status === "Accepted" || status === "Concession Released" ? "ok" : ["Rejected", "Overdue"].includes(status) ? "danger" : status === "Not Required" ? "" : "warn";
 		const disabled = status === "Not Required" ? "disabled" : "";
-		return `<button class="jce-q-node ${tone}" data-node="${esc(node)}" ${disabled}><span>${esc(__(node))}</span><b>${esc(__(status || "Pending"))}</b></button>`;
+		const fai_pending = node === "Patrol"
+			&& cint(task?.first_article_required)
+			&& !["Accepted", "Concession Released"].includes(task?.first_article_status || "");
+		const hint = fai_pending ? `<em>${__("FAI Pending")}</em>` : "";
+		return `<button class="jce-q-node ${tone} ${fai_pending ? "sequence-warn" : ""}" data-node="${esc(node)}" ${disabled}><span>${esc(__(node))}</span><b>${esc(__(status || "Pending"))}</b>${hint}</button>`;
 	}
 
 	open_check(task, node) {
@@ -460,16 +464,23 @@ class QualityInspectionTerminal {
 	open_manual_check_dialog() {
 		const d = new frappe.ui.Dialog({
 			title: __("IPQC Manual Production Check"),
+			size: "large",
 			fields: [
+				{ fieldname: "manual_context_section", fieldtype: "Section Break", label: __("Production Context") },
 				{ fieldname: "item_code", fieldtype: "Link", options: "Item", label: __("Item Code"), reqd: 1 },
 				{ fieldname: "workstation", fieldtype: "Link", options: "Workstation", label: __("Workstation"), reqd: 1 },
+				{ fieldname: "manual_context_column", fieldtype: "Column Break" },
 				{ fieldname: "company", fieldtype: "Link", options: "Company", label: __("Company") },
 				{ fieldname: "plant_floor", fieldtype: "Link", options: "Plant Floor", label: __("Plant Floor"), default: this.filters.plant_floor },
+				{ fieldname: "manual_node_section", fieldtype: "Section Break", label: __("Inspection Node") },
 				{ fieldname: "quality_node", fieldtype: "Select", label: __("Quality Node"), options: "\n", reqd: 1 },
 				{ fieldname: "node_options_html", fieldtype: "HTML" },
+				{ fieldname: "manual_qty_section", fieldtype: "Section Break", label: __("Quantity & Timing") },
 				{ fieldname: "qty", fieldtype: "Float", label: __("Qty"), default: 1 },
 				{ fieldname: "shift_type", fieldtype: "Data", label: __("Shift"), default: this.filters.shift_type },
+				{ fieldname: "manual_qty_column", fieldtype: "Column Break" },
 				{ fieldname: "posting_date", fieldtype: "Date", label: __("Date"), default: this.filters.posting_date || frappe.datetime.get_today() },
+				{ fieldname: "manual_remarks_section", fieldtype: "Section Break", label: __("Remarks") },
 				{ fieldname: "remarks", fieldtype: "Small Text", label: __("Remarks") },
 			],
 			primary_action_label: __("Create"),
@@ -491,7 +502,9 @@ class QualityInspectionTerminal {
 				});
 			},
 		});
+		d.$wrapper.addClass("jce-q-manual-check-modal");
 		d.show();
+		d.$wrapper.find(".modal-dialog").addClass("modal-dialog-scrollable jce-q-manual-check-dialog");
 		const refresh_options = () => this.refresh_manual_node_options(d);
 		["item_code", "workstation", "company", "plant_floor"].forEach((fieldname) => {
 			d.get_field(fieldname)?.$input?.on("change", refresh_options);
@@ -860,6 +873,7 @@ class QualityInspectionTerminal {
 	render_oqc_item_row(row) {
 		const hasCheck = !!row.check_name;
 		const sourceType = row.source_type || (row.delivery_plan ? "Delivery Plan OQC" : "Delivery Note OQC");
+		const customerCode = clean_value(row.customer_code);
 		const ruleNote = row.production_quality_rule
 			? `<em>${esc(row.production_quality_rule)}${row.quality_inspection_template ? ` · ${esc(row.quality_inspection_template)}` : ""}</em>`
 			: `<em class="warn">${__("No OQC rule configured. Manual inspection is allowed.")}</em>`;
@@ -868,6 +882,7 @@ class QualityInspectionTerminal {
 				<div class="jce-q-oqc-item-main">
 					<b>${esc(row.item_code || "")}</b>
 					<span>${esc(row.item_name || "")}</span>
+					${customerCode ? `<span class="jce-q-oqc-customer-code">${__("Customer Code")}: ${esc(customerCode)}</span>` : ""}
 					<em>${esc(row.warehouse || "-")} · ${esc(row.uom || "-")} · ${format_float(row.qty || 0)}</em>
 					${ruleNote}
 				</div>
@@ -3049,6 +3064,37 @@ class QualityInspectionTerminal {
 					min-height: 0;
 					overflow: hidden;
 				}
+				.modal.jce-q-manual-check-modal .modal-dialog,
+				body.jce-quality-terminal-focus-active .modal.jce-q-manual-check-modal .modal-dialog {
+					max-width: min(920px, calc(100vw - 24px));
+					max-height: calc(100dvh - 24px);
+				}
+				.modal.jce-q-manual-check-modal .modal-content,
+				body.jce-quality-terminal-focus-active .modal.jce-q-manual-check-modal .modal-content {
+					max-height: calc(100dvh - 24px);
+					overflow: hidden;
+				}
+				.modal.jce-q-manual-check-modal .modal-body,
+				body.jce-quality-terminal-focus-active .modal.jce-q-manual-check-modal .modal-body {
+					overflow-y: auto !important;
+					overflow-x: hidden !important;
+					max-height: calc(100dvh - 148px);
+					padding-bottom: 10px;
+					-webkit-overflow-scrolling: touch;
+				}
+				.modal.jce-q-manual-check-modal .modal-footer,
+				body.jce-quality-terminal-focus-active .modal.jce-q-manual-check-modal .modal-footer {
+					position: sticky;
+					bottom: 0;
+					z-index: 1;
+					background: #fff;
+				}
+				.modal.jce-q-manual-check-modal .form-section {
+					margin-bottom: 4px;
+				}
+				.modal.jce-q-manual-check-modal .form-group {
+					margin-bottom: 9px;
+				}
 				body.jce-quality-terminal-focus-active .modal-footer {
 					flex: 0 0 auto;
 				}
@@ -3521,7 +3567,8 @@ class QualityInspectionTerminal {
 					opacity: .56;
 				}
 				.jce-q-node span,
-				.jce-q-node b {
+				.jce-q-node b,
+				.jce-q-node em {
 					display: block;
 					overflow: hidden;
 					text-overflow: ellipsis;
@@ -3531,6 +3578,16 @@ class QualityInspectionTerminal {
 					margin-top: 3px;
 					color: var(--jce-muted);
 					font-size: 11px;
+				}
+				.jce-q-node em {
+					margin-top: 2px;
+					color: var(--jce-orange);
+					font-size: 10px;
+					font-style: normal;
+					font-weight: 800;
+				}
+				.jce-q-node.sequence-warn {
+					border-color: rgba(182, 90, 0, 0.24);
 				}
 					.jce-q-node.ok { background: #ecf9f0; color: var(--jce-green); }
 					.jce-q-node.warn { background: #fff6e5; color: var(--jce-orange); }
@@ -4386,6 +4443,11 @@ class QualityInspectionTerminal {
 				.jce-q-oqc-shell .jce-q-list-header {
 					align-items: center;
 				}
+				.jce-terminal-fullscreen .jce-q-task-shell.jce-q-oqc-shell {
+					display: grid;
+					grid-template-rows: auto auto minmax(0, 1fr);
+					overflow: hidden;
+				}
 				.jce-q-filter-panel.oqc {
 					align-items: flex-end;
 				}
@@ -4399,23 +4461,45 @@ class QualityInspectionTerminal {
 					display: grid;
 					grid-template-columns: minmax(280px, 370px) minmax(0, 1fr);
 					gap: 10px;
+					min-height: 0;
+				}
+				.jce-terminal-fullscreen .jce-q-oqc-workspace {
+					height: 100%;
 				}
 				.jce-q-oqc-list-panel,
 				.jce-q-oqc-items-panel {
+					display: flex;
+					flex-direction: column;
 					min-height: min(66dvh, 620px);
 					margin-bottom: 0;
+					overflow: hidden;
+				}
+				.jce-terminal-fullscreen .jce-q-oqc-list-panel,
+				.jce-terminal-fullscreen .jce-q-oqc-items-panel {
+					height: 100%;
+					min-height: 0;
+				}
+				.jce-q-oqc-list-panel .jce-q-section-head,
+				.jce-q-oqc-items-panel .jce-q-section-head {
+					flex: 0 0 auto;
 				}
 				.jce-q-oqc-delivery-list,
 				.jce-q-oqc-items {
 					display: grid;
 					gap: 8px;
+					flex: 1 1 auto;
+					min-height: 0;
+					overflow-y: auto;
+					overflow-x: hidden;
+					padding-right: 2px;
+					overscroll-behavior: contain;
+					-webkit-overflow-scrolling: touch;
 				}
 				.jce-q-oqc-list {
 					display: grid;
 					gap: 8px;
-					max-height: min(62dvh, 620px);
-					overflow: auto;
-					padding-right: 2px;
+					max-height: none;
+					overflow: visible;
 				}
 				.jce-q-oqc-row {
 					display: flex;
@@ -4446,6 +4530,11 @@ class QualityInspectionTerminal {
 				}
 				.jce-q-oqc-item-main {
 					min-width: 0;
+				}
+				.jce-q-oqc-customer-code {
+					color: #07549f;
+					font-size: 12px;
+					font-weight: 760;
 				}
 				.jce-q-oqc-item-main .warn {
 					color: var(--jce-orange);
@@ -4853,6 +4942,7 @@ class QualityInspectionTerminal {
 					}
 					.jce-q-oqc-workspace {
 						grid-template-columns: 1fr;
+						grid-template-rows: minmax(170px, .42fr) minmax(0, 1fr);
 					}
 					.jce-q-system-result { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 					.jce-q-toolbar-actions .jce-q-bar-button { flex: 1 1 calc(50% - 8px); }

@@ -7,15 +7,22 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "section_defect_identity",
   "defect_code",
   "defect_name",
   "category",
-  "column_break_1",
+  "column_defect_identity",
   "severity",
   "disabled",
+  "section_defect_description",
   "description"
  ],
  "fields": [
+  {
+   "fieldname": "section_defect_identity",
+   "fieldtype": "Section Break",
+   "label": "Defect Identity"
+  },
   {
    "fieldname": "defect_code",
    "fieldtype": "Data",
@@ -40,7 +47,7 @@
    "label": "Defect Category"
   },
   {
-   "fieldname": "column_break_1",
+   "fieldname": "column_defect_identity",
    "fieldtype": "Column Break"
   },
   {
@@ -58,6 +65,11 @@
    "fieldtype": "Check",
    "in_standard_filter": 1,
    "label": "Disabled"
+  },
+  {
+   "fieldname": "section_defect_description",
+   "fieldtype": "Section Break",
+   "label": "Description"
   },
   {
    "fieldname": "description",

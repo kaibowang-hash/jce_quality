@@ -7,24 +7,25 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
-  "enabled_section",
+  "section_rule",
   "disabled",
   "quality_node",
   "repeat_interval_mins",
-  "scope_section",
+  "section_scope",
   "company",
   "plant_floor",
   "workstation",
-  "column_break_scope",
+  "column_scope",
   "shift_type",
-  "recipients_section",
+  "section_recipients",
   "reminder_users",
+  "column_recipients",
   "reminder_role",
   "remarks"
  ],
  "fields": [
   {
-   "fieldname": "enabled_section",
+   "fieldname": "section_rule",
    "fieldtype": "Section Break",
    "label": "Reminder Rule"
   },
@@ -52,7 +53,7 @@
    "label": "Overdue Repeat Interval (Minutes)"
   },
   {
-   "fieldname": "scope_section",
+   "fieldname": "section_scope",
    "fieldtype": "Section Break",
    "label": "Scope"
   },
@@ -80,7 +81,7 @@
    "options": "Workstation"
   },
   {
-   "fieldname": "column_break_scope",
+   "fieldname": "column_scope",
    "fieldtype": "Column Break"
   },
   {
@@ -90,7 +91,7 @@
    "label": "Shift Type"
   },
   {
-   "fieldname": "recipients_section",
+   "fieldname": "section_recipients",
    "fieldtype": "Section Break",
    "label": "Recipients"
   },
@@ -99,6 +100,10 @@
    "fieldname": "reminder_users",
    "fieldtype": "Small Text",
    "label": "Reminder Users"
+  },
+  {
+   "fieldname": "column_recipients",
+   "fieldtype": "Column Break"
   },
   {
    "default": "Quality Manager",

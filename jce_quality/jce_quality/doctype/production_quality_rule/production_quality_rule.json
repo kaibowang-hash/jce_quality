@@ -7,32 +7,36 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
-  "enabled_section",
+  "section_rule_status",
   "disabled",
   "quality_node",
   "is_mandatory",
-  "column_break_scope",
+  "column_rule_status",
   "company",
   "plant_floor",
+  "section_matching_scope",
   "workstation",
   "item_code",
+  "column_matching_scope",
   "item_group",
-  "template_section",
+  "section_inspection_standard",
   "quality_inspection_template",
   "requires_sample",
   "required_sample_type",
+  "column_inspection_standard",
   "reference_sample",
-  "column_break_frequency",
+  "section_frequency_thresholds",
   "minimum_patrol_count",
   "patrol_interval_mins",
   "max_defect_rate",
+  "column_frequency_thresholds",
   "remarks"
  ],
  "fields": [
   {
-   "fieldname": "enabled_section",
+   "fieldname": "section_rule_status",
    "fieldtype": "Section Break",
-   "label": "Rule"
+   "label": "Rule Status"
   },
   {
    "default": "0",
@@ -57,7 +61,7 @@
    "label": "Mandatory Gate"
   },
   {
-   "fieldname": "column_break_scope",
+   "fieldname": "column_rule_status",
    "fieldtype": "Column Break"
   },
   {
@@ -75,6 +79,11 @@
    "options": "Plant Floor"
   },
   {
+   "fieldname": "section_matching_scope",
+   "fieldtype": "Section Break",
+   "label": "Matching Scope"
+  },
+  {
    "fieldname": "workstation",
    "fieldtype": "Link",
    "in_standard_filter": 1,
@@ -90,6 +99,10 @@
    "options": "Item"
   },
   {
+   "fieldname": "column_matching_scope",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "item_group",
    "fieldtype": "Link",
    "in_standard_filter": 1,
@@ -97,7 +110,7 @@
    "options": "Item Group"
   },
   {
-   "fieldname": "template_section",
+   "fieldname": "section_inspection_standard",
    "fieldtype": "Section Break",
    "label": "Inspection Standard"
   },
@@ -122,6 +135,10 @@
    "options": "\nGDN - Golden Sample\nSTD - Standard Sample\nFAI1 - First Article Sample (EB)\nPFAI - In-process FA Sample\nLMT - Limit Sample\nOQC - OQC Retained Sample\nEXS - Experimental Sample (TPR)\nMAT - Mating Part Sample (External)\nFGS - Final Product Sample (External)\nQTS - Quotation Sample (External)"
   },
   {
+   "fieldname": "column_inspection_standard",
+   "fieldtype": "Column Break"
+  },
+  {
    "depends_on": "requires_sample",
    "fieldname": "reference_sample",
    "fieldtype": "Link",
@@ -129,8 +146,9 @@
    "options": "Sample Manager"
   },
   {
-   "fieldname": "column_break_frequency",
-   "fieldtype": "Column Break"
+   "fieldname": "section_frequency_thresholds",
+   "fieldtype": "Section Break",
+   "label": "Frequency & Thresholds"
   },
   {
    "default": "1",
@@ -151,6 +169,10 @@
    "fieldname": "max_defect_rate",
    "fieldtype": "Percent",
    "label": "Max Defect Rate"
+  },
+  {
+   "fieldname": "column_frequency_thresholds",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "remarks",

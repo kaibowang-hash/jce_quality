@@ -15,14 +15,69 @@
   "token"
  ],
  "fields": [
-  {"default": "1", "fieldname": "enabled", "fieldtype": "Check", "in_list_view": 1, "label": "Enabled"},
-  {"fieldname": "api_key", "fieldtype": "Data", "in_list_view": 1, "label": "API Key", "reqd": 1},
-  {"fieldname": "event", "fieldtype": "Select", "in_list_view": 1, "label": "Event", "options": "\nOQC Email Package\nDMR Notification\nQuality Alert"},
-  {"default": "POST", "fieldname": "method", "fieldtype": "Select", "label": "HTTP Method", "options": "GET\nPOST"},
-  {"fieldname": "endpoint", "fieldtype": "Data", "in_list_view": 1, "label": "Endpoint URL"},
-  {"default": "30", "fieldname": "timeout_seconds", "fieldtype": "Int", "label": "Timeout Seconds"},
-  {"fieldname": "auth_type", "fieldtype": "Select", "label": "Auth Type", "options": "\nBearer Token\nAPI Key\nNone"},
-  {"fieldname": "token", "fieldtype": "Password", "label": "Token / Secret"}
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Enabled",
+   "columns": 1
+  },
+  {
+   "fieldname": "api_key",
+   "fieldtype": "Data",
+   "in_list_view": 0,
+   "label": "API Key",
+   "reqd": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "event",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Event",
+   "options": "\nOQC Email Package\nDMR Notification\nQuality Alert",
+   "columns": 2
+  },
+  {
+   "default": "POST",
+   "fieldname": "method",
+   "fieldtype": "Select",
+   "label": "HTTP Method",
+   "options": "GET\nPOST",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "endpoint",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Endpoint URL",
+   "columns": 4
+  },
+  {
+   "default": "30",
+   "fieldname": "timeout_seconds",
+   "fieldtype": "Int",
+   "label": "Timeout Seconds",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "auth_type",
+   "fieldtype": "Select",
+   "label": "Auth Type",
+   "options": "\nBearer Token\nAPI Key\nNone",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "token",
+   "fieldtype": "Password",
+   "label": "Token / Secret",
+   "in_list_view": 0,
+   "columns": 1
+  }
  ],
  "istable": 1,
  "links": [],

@@ -7,10 +7,17 @@
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
+  "section_method",
   "method_name",
+  "section_description",
   "method_description"
  ],
  "fields": [
+  {
+   "fieldname": "section_method",
+   "fieldtype": "Section Break",
+   "label": "Inspection Method"
+  },
   {
    "fieldname": "method_name",
    "fieldtype": "Data",
@@ -18,6 +25,11 @@
    "label": "Method Name",
    "reqd": 1,
    "unique": 1
+  },
+  {
+   "fieldname": "section_description",
+   "fieldtype": "Section Break",
+   "label": "Description"
   },
   {
    "fieldname": "method_description",

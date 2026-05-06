@@ -1,7 +1,6 @@
-frappe.ui.form.on("Quality Defect Code", {
+frappe.ui.form.on("Quality Inspection Method", {
 	refresh(frm) {
 		apply_quality_form_style(frm);
-		frm.set_intro(__("Use concise, stable defect codes so analytics stay clean over time."));
 	},
 
 	validate(frm) {

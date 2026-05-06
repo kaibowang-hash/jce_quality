@@ -6,48 +6,211 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "tab_request",
+  "section_request_status",
   "status",
   "company",
   "reference_doctype",
   "reference_name",
+  "column_request_status",
+  "requested_by",
+  "requested_role",
+  "requested_at",
+  "section_production_context",
   "work_order_scheduling",
   "scheduling_item",
   "item_code",
   "item_name",
+  "column_production_context",
   "qty",
   "uom",
   "warehouse",
+  "section_warehouse_context",
   "source_warehouse",
   "target_warehouse",
+  "tab_approval",
+  "section_reason",
   "reason",
-  "requested_by",
-  "requested_role",
-  "requested_at",
+  "section_approval",
   "approved_by",
   "approved_role",
   "approved_at"
  ],
  "fields": [
-  {"default": "Draft", "fieldname": "status", "fieldtype": "Select", "in_list_view": 1, "label": "Status", "options": "Draft\nRequested\nApproved\nRejected\nUsed\nCancelled", "reqd": 1},
-  {"fieldname": "company", "fieldtype": "Link", "in_standard_filter": 1, "label": "Company", "options": "Company"},
-  {"fieldname": "reference_doctype", "fieldtype": "Select", "label": "Reference DocType", "options": "\nStock Entry\nWork Order Scheduling"},
-  {"fieldname": "reference_name", "fieldtype": "Dynamic Link", "in_list_view": 1, "label": "Reference Name", "options": "reference_doctype"},
-  {"fieldname": "work_order_scheduling", "fieldtype": "Link", "label": "Work Order Scheduling", "options": "Work Order Scheduling"},
-  {"fieldname": "scheduling_item", "fieldtype": "Data", "label": "Scheduling Item Row", "search_index": 1},
-  {"fieldname": "item_code", "fieldtype": "Link", "in_list_view": 1, "label": "Item", "options": "Item"},
-  {"fieldname": "item_name", "fieldtype": "Data", "label": "Item Name", "read_only": 1},
-  {"fieldname": "qty", "fieldtype": "Float", "in_list_view": 1, "label": "Qty"},
-  {"fieldname": "uom", "fieldtype": "Link", "label": "UOM", "options": "UOM"},
-  {"fieldname": "warehouse", "fieldtype": "Link", "label": "Warehouse", "options": "Warehouse"},
-  {"fieldname": "source_warehouse", "fieldtype": "Link", "label": "Source Warehouse", "options": "Warehouse"},
-  {"fieldname": "target_warehouse", "fieldtype": "Link", "label": "Target Warehouse", "options": "Warehouse"},
-  {"fieldname": "reason", "fieldtype": "Small Text", "in_list_view": 1, "label": "Reason", "reqd": 1},
-  {"fieldname": "requested_by", "fieldtype": "Link", "label": "Requested By", "options": "User", "read_only": 1},
-  {"fieldname": "requested_role", "fieldtype": "Link", "label": "Requested Role", "options": "Role", "read_only": 1},
-  {"fieldname": "requested_at", "fieldtype": "Datetime", "label": "Requested At", "read_only": 1},
-  {"fieldname": "approved_by", "fieldtype": "Link", "label": "Approved By", "options": "User", "read_only": 1},
-  {"fieldname": "approved_role", "fieldtype": "Link", "label": "Approved Role", "options": "Role", "read_only": 1},
-  {"fieldname": "approved_at", "fieldtype": "Datetime", "label": "Approved At", "read_only": 1}
+  {
+   "fieldname": "tab_request",
+   "fieldtype": "Tab Break",
+   "label": "Request"
+  },
+  {
+   "fieldname": "section_request_status",
+   "fieldtype": "Section Break",
+   "label": "Request Status"
+  },
+  {
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "Draft\nRequested\nApproved\nRejected\nUsed\nCancelled",
+   "reqd": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "fieldname": "reference_doctype",
+   "fieldtype": "Select",
+   "label": "Reference DocType",
+   "options": "\nStock Entry\nWork Order Scheduling"
+  },
+  {
+   "fieldname": "reference_name",
+   "fieldtype": "Dynamic Link",
+   "in_list_view": 1,
+   "label": "Reference Name",
+   "options": "reference_doctype"
+  },
+  {
+   "fieldname": "column_request_status",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "requested_by",
+   "fieldtype": "Link",
+   "label": "Requested By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "requested_role",
+   "fieldtype": "Link",
+   "label": "Requested Role",
+   "options": "Role",
+   "read_only": 1
+  },
+  {
+   "fieldname": "requested_at",
+   "fieldtype": "Datetime",
+   "label": "Requested At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_production_context",
+   "fieldtype": "Section Break",
+   "label": "Production Context"
+  },
+  {
+   "fieldname": "work_order_scheduling",
+   "fieldtype": "Link",
+   "label": "Work Order Scheduling",
+   "options": "Work Order Scheduling"
+  },
+  {
+   "fieldname": "scheduling_item",
+   "fieldtype": "Data",
+   "label": "Scheduling Item Row",
+   "search_index": 1
+  },
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Item",
+   "options": "Item"
+  },
+  {
+   "fieldname": "item_name",
+   "fieldtype": "Data",
+   "label": "Item Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_production_context",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "qty",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Qty"
+  },
+  {
+   "fieldname": "uom",
+   "fieldtype": "Link",
+   "label": "UOM",
+   "options": "UOM"
+  },
+  {
+   "fieldname": "warehouse",
+   "fieldtype": "Link",
+   "label": "Warehouse",
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "section_warehouse_context",
+   "fieldtype": "Section Break",
+   "label": "Warehouse Movement"
+  },
+  {
+   "fieldname": "source_warehouse",
+   "fieldtype": "Link",
+   "label": "Source Warehouse",
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "target_warehouse",
+   "fieldtype": "Link",
+   "label": "Target Warehouse",
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "tab_approval",
+   "fieldtype": "Tab Break",
+   "label": "Approval"
+  },
+  {
+   "fieldname": "section_reason",
+   "fieldtype": "Section Break",
+   "label": "Reason"
+  },
+  {
+   "fieldname": "reason",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Reason",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_approval",
+   "fieldtype": "Section Break",
+   "label": "Approval"
+  },
+  {
+   "fieldname": "approved_by",
+   "fieldtype": "Link",
+   "label": "Approved By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "approved_role",
+   "fieldtype": "Link",
+   "label": "Approved Role",
+   "options": "Role",
+   "read_only": 1
+  },
+  {
+   "fieldname": "approved_at",
+   "fieldtype": "Datetime",
+   "label": "Approved At",
+   "read_only": 1
+  }
  ],
  "modified": "2026-05-05 00:00:00.000000",
  "modified_by": "Administrator",
@@ -55,10 +218,51 @@
  "name": "Quality Gate Bypass",
  "owner": "Administrator",
  "permissions": [
-  {"create": 1, "delete": 1, "email": 1, "export": 1, "print": 1, "read": 1, "report": 1, "role": "System Manager", "share": 1, "write": 1},
-  {"create": 1, "email": 1, "export": 1, "print": 1, "read": 1, "report": 1, "role": "Quality Manager", "share": 1, "write": 1},
-  {"create": 1, "email": 1, "export": 1, "print": 1, "read": 1, "report": 1, "role": "Manufacturing Manager", "share": 1, "write": 1},
-  {"create": 1, "email": 1, "export": 1, "print": 1, "read": 1, "report": 1, "role": "Stock User", "share": 1, "write": 1}
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Quality Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Manufacturing Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Stock User",
+   "share": 1,
+   "write": 1
+  }
  ],
  "sort_field": "modified",
  "sort_order": "DESC"

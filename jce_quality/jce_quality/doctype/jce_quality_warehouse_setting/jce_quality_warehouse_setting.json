@@ -11,11 +11,51 @@
   "finished_goods_warehouse"
  ],
  "fields": [
-  {"fieldname": "company", "fieldtype": "Link", "in_list_view": 1, "label": "Company", "options": "Company", "reqd": 1},
-  {"fieldname": "return_inspection_warehouse", "fieldtype": "Link", "in_list_view": 1, "label": "Return Inspection Warehouse", "options": "Warehouse", "reqd": 1},
-  {"fieldname": "ng_warehouse", "fieldtype": "Link", "in_list_view": 1, "label": "NG Warehouse", "options": "Warehouse", "reqd": 1},
-  {"fieldname": "scrap_warehouse", "fieldtype": "Link", "in_list_view": 1, "label": "Scrap Warehouse", "options": "Warehouse", "reqd": 1},
-  {"fieldname": "finished_goods_warehouse", "fieldtype": "Link", "in_list_view": 1, "label": "Finished Goods Warehouse", "options": "Warehouse", "reqd": 1}
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "return_inspection_warehouse",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Return Inspection Warehouse",
+   "options": "Warehouse",
+   "reqd": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "ng_warehouse",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "NG Warehouse",
+   "options": "Warehouse",
+   "reqd": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "scrap_warehouse",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Scrap Warehouse",
+   "options": "Warehouse",
+   "reqd": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "finished_goods_warehouse",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Finished Goods Warehouse",
+   "options": "Warehouse",
+   "reqd": 1,
+   "columns": 2
+  }
  ],
  "istable": 1,
  "modified": "2026-05-05 00:00:00.000000",

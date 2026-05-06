@@ -16,7 +16,8 @@
    "in_list_view": 1,
    "label": "Action",
    "options": "Temporary Continue\nDisposition\nConcession Approval\nOQC Release\nOQC Temporary Release\nOQC Block\nOQC DMR Escalation\nOQC Email",
-   "reqd": 1
+   "reqd": 1,
+   "columns": 5
   },
   {
    "fieldname": "role",
@@ -24,7 +25,8 @@
    "in_list_view": 1,
    "label": "Role",
    "options": "Role",
-   "reqd": 1
+   "reqd": 1,
+   "columns": 5
   }
  ],
  "istable": 1,

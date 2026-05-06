@@ -6,27 +6,35 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "section_status",
   "status",
   "quality_node",
   "due_at",
   "last_reminded_at",
   "reminder_count",
-  "source_section",
+  "column_status",
+  "latest_quality_check",
+  "section_source",
   "work_order_scheduling",
   "scheduling_item",
-  "latest_quality_check",
   "item_code",
-  "column_break_source",
   "company",
+  "column_source",
   "plant_floor",
   "workstation",
   "shift_type",
-  "recipient_section",
+  "section_recipients",
   "reminder_users",
+  "column_recipients",
   "closed_by",
   "closed_at"
  ],
  "fields": [
+  {
+   "fieldname": "section_status",
+   "fieldtype": "Section Break",
+   "label": "Reminder Status"
+  },
   {
    "default": "Open",
    "fieldname": "status",
@@ -66,7 +74,17 @@
    "label": "Reminder Count"
   },
   {
-   "fieldname": "source_section",
+   "fieldname": "column_status",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "latest_quality_check",
+   "fieldtype": "Link",
+   "label": "Latest Quality Check",
+   "options": "Production Quality Check"
+  },
+  {
+   "fieldname": "section_source",
    "fieldtype": "Section Break",
    "label": "Source"
   },
@@ -88,26 +106,20 @@
    "search_index": 1
   },
   {
-   "fieldname": "latest_quality_check",
-   "fieldtype": "Link",
-   "label": "Latest Quality Check",
-   "options": "Production Quality Check"
-  },
-  {
    "fieldname": "item_code",
    "fieldtype": "Link",
    "label": "Item Code",
    "options": "Item"
   },
   {
-   "fieldname": "column_break_source",
-   "fieldtype": "Column Break"
-  },
-  {
    "fieldname": "company",
    "fieldtype": "Link",
    "label": "Company",
    "options": "Company"
+  },
+  {
+   "fieldname": "column_source",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "plant_floor",
@@ -130,7 +142,7 @@
    "label": "Shift Type"
   },
   {
-   "fieldname": "recipient_section",
+   "fieldname": "section_recipients",
    "fieldtype": "Section Break",
    "label": "Recipients"
   },
@@ -138,6 +150,10 @@
    "fieldname": "reminder_users",
    "fieldtype": "Small Text",
    "label": "Reminder Users"
+  },
+  {
+   "fieldname": "column_recipients",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "closed_by",

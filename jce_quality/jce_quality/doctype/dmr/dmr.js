@@ -1,5 +1,6 @@
 frappe.ui.form.on("DMR", {
 	refresh(frm) {
+		apply_quality_form_style(frm);
 		frm.page.set_title(__("DMR - Defect Material Report") + (frm.doc.name ? ` ${frm.doc.name}` : ""));
 		sync_source_doctype(frm);
 		sync_reinspection_items(frm);
@@ -56,7 +57,17 @@ frappe.ui.form.on("DMR", {
 		row.uom = frm.doc.uom;
 		frm.refresh_field("reinspection_results");
 	},
+
+	validate(frm) {
+		apply_quality_form_style(frm);
+	},
 });
+
+function apply_quality_form_style(frm) {
+	frappe.require("/assets/jce_quality/js/quality_form_style.js", () => {
+		window.jce_quality?.form_style?.apply(frm);
+	});
+}
 
 const DMR_SOURCE_MAP = {
 	IQC: "Quality Inspection",
