@@ -7,88 +7,359 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "tab_overview",
+  "section_status",
   "naming_series",
   "status",
   "dmr_type",
   "escalation_level",
   "company",
-  "source_section",
+  "column_status_source",
   "source_doctype",
   "source_name",
   "source_date",
   "reference_number",
   "source_detail",
-  "item_section",
+  "section_defect_item",
   "item_code",
   "item_name",
   "qty",
   "uom",
-  "column_break_item",
+  "column_defect_item",
   "occurrence_location",
+  "section_defect_codes",
   "defects",
-  "party_section",
+  "tab_party_disposition",
+  "section_party",
   "supplier",
   "customer",
-  "iqc_return_section",
-  "requires_return_rejection",
-  "return_rejection_status",
-  "purchase_return",
-  "original_delivery_note",
-  "delivery_note_return",
-  "return_reason",
-  "customer_complaint_section",
+  "section_customer_complaint",
   "customer_requirement",
   "actual_return_qty",
   "actual_exchange_qty",
+  "column_customer_complaint",
   "first_exchange_stock_entry",
   "disposition_stock_entry",
+  "section_iqc_return",
+  "requires_return_rejection",
+  "return_rejection_status",
+  "purchase_return",
+  "column_iqc_return",
+  "original_delivery_note",
+  "delivery_note_return",
+  "return_reason",
+  "section_reinspection",
   "reinspection_results",
-  "workflow_section",
+  "tab_workflow",
+  "section_workflow",
   "assigned_role",
   "notification_endpoint",
+  "section_remarks",
   "remarks"
  ],
  "fields": [
-  {"default": "DMR-.YY.-", "fieldname": "naming_series", "fieldtype": "Select", "label": "Series", "options": "DMR-.YY.-", "reqd": 1, "set_only_once": 1},
-  {"default": "Draft", "fieldname": "status", "fieldtype": "Select", "in_list_view": 1, "in_standard_filter": 1, "label": "Status", "options": "Draft\nIn Review\nPending Disposition\nPending Return Rejection\nReturn Rejection Completed\nEscalated\nClosed\nCancelled", "reqd": 1},
-  {"fieldname": "dmr_type", "fieldtype": "Select", "in_list_view": 1, "in_standard_filter": 1, "label": "DMR Type", "options": "\nIQC\nIPQC\nOQC\nCustomer Complaint", "reqd": 1},
-  {"fieldname": "escalation_level", "fieldtype": "Select", "in_list_view": 1, "label": "Escalation Level", "options": "\nL1\nL2\nL3"},
-  {"fieldname": "company", "fieldtype": "Link", "in_standard_filter": 1, "label": "Company", "options": "Company"},
-  {"fieldname": "source_section", "fieldtype": "Section Break", "label": "Source"},
-  {"fieldname": "source_doctype", "fieldtype": "Select", "in_standard_filter": 1, "label": "Source DocType", "options": "\nQuality Inspection\nProduction Quality Check\nDelivery Note"},
-  {"fieldname": "source_name", "fieldtype": "Dynamic Link", "in_standard_filter": 1, "label": "Source Document", "options": "source_doctype"},
-  {"fieldname": "source_date", "fieldtype": "Date", "label": "Source Date"},
-  {"fieldname": "reference_number", "fieldtype": "Data", "label": "Reference Number"},
-  {"fieldname": "source_detail", "fieldtype": "Data", "label": "Source Detail"},
-  {"fieldname": "item_section", "fieldtype": "Section Break", "label": "Defect Item"},
-  {"fieldname": "item_code", "fieldtype": "Link", "in_global_search": 1, "in_list_view": 1, "in_standard_filter": 1, "label": "Item Code", "options": "Item", "reqd": 1},
-  {"fieldname": "item_name", "fieldtype": "Data", "in_list_view": 1, "label": "Item Name", "read_only": 1},
-  {"fieldname": "qty", "fieldtype": "Float", "in_list_view": 1, "label": "Defect Qty"},
-  {"fieldname": "uom", "fieldtype": "Link", "label": "UOM", "options": "UOM"},
-  {"fieldname": "column_break_item", "fieldtype": "Column Break"},
-  {"fieldname": "occurrence_location", "fieldtype": "Data", "label": "Occurrence Location"},
-  {"fieldname": "defects", "fieldtype": "Table", "label": "Defect Codes", "options": "DMR Defect"},
-  {"fieldname": "party_section", "fieldtype": "Section Break", "label": "Party"},
-  {"depends_on": "eval:doc.dmr_type=='IQC'", "fieldname": "supplier", "fieldtype": "Link", "label": "Supplier", "options": "Supplier"},
-  {"depends_on": "eval:doc.dmr_type=='Customer Complaint'", "fieldname": "customer", "fieldtype": "Link", "label": "Customer", "options": "Customer"},
-  {"collapsible": 1, "depends_on": "eval:doc.dmr_type=='IQC'", "fieldname": "iqc_return_section", "fieldtype": "Section Break", "label": "IQC Return Rejection"},
-  {"depends_on": "eval:doc.dmr_type=='IQC'", "fieldname": "requires_return_rejection", "fieldtype": "Check", "label": "Requires Return Rejection"},
-  {"depends_on": "eval:doc.dmr_type=='IQC'", "fieldname": "return_rejection_status", "fieldtype": "Select", "label": "Return Rejection Status", "options": "\nNot Required\nPending\nCompleted\nCancelled"},
-  {"depends_on": "eval:doc.dmr_type=='IQC'", "fieldname": "purchase_return", "fieldtype": "Link", "label": "Purchase Return Reference", "options": "Purchase Receipt"},
-  {"depends_on": "eval:doc.dmr_type=='Customer Complaint'", "fieldname": "original_delivery_note", "fieldtype": "Link", "label": "Original Delivery Note", "options": "Delivery Note"},
-  {"depends_on": "eval:doc.dmr_type=='Customer Complaint' && doc.customer_requirement=='Return'", "fieldname": "delivery_note_return", "fieldtype": "Link", "label": "Delivery Note Return", "options": "Delivery Note"},
-  {"default": "DMR-REJ", "depends_on": "eval:doc.dmr_type=='Customer Complaint' && doc.customer_requirement=='Return'", "fieldname": "return_reason", "fieldtype": "Data", "label": "Return Reason"},
-  {"depends_on": "eval:doc.dmr_type=='Customer Complaint'", "fieldname": "customer_complaint_section", "fieldtype": "Section Break", "label": "Customer Complaint"},
-  {"depends_on": "eval:doc.dmr_type=='Customer Complaint'", "fieldname": "customer_requirement", "fieldtype": "Select", "label": "Customer Requirement", "options": "\nReturn\nExchange"},
-  {"depends_on": "eval:doc.dmr_type=='Customer Complaint' && doc.customer_requirement=='Return'", "fieldname": "actual_return_qty", "fieldtype": "Float", "label": "Actual Return Qty"},
-  {"depends_on": "eval:doc.dmr_type=='Customer Complaint'", "fieldname": "actual_exchange_qty", "fieldtype": "Float", "label": "Actual Exchange Qty"},
-  {"depends_on": "eval:doc.dmr_type=='Customer Complaint'", "fieldname": "first_exchange_stock_entry", "fieldtype": "Link", "label": "First Exchange Stock Entry", "options": "Stock Entry", "read_only": 1},
-  {"depends_on": "eval:doc.dmr_type=='Customer Complaint'", "fieldname": "disposition_stock_entry", "fieldtype": "Link", "label": "Disposition Stock Entry", "options": "Stock Entry", "read_only": 1},
-  {"depends_on": "eval:doc.dmr_type=='Customer Complaint'", "fieldname": "reinspection_results", "fieldtype": "Table", "label": "Reinspection Results", "options": "DMR Reinspection Result"},
-  {"collapsible": 1, "fieldname": "workflow_section", "fieldtype": "Section Break", "label": "Workflow / Notification"},
-  {"fieldname": "assigned_role", "fieldtype": "Link", "label": "Assigned Role", "options": "Role"},
-  {"fieldname": "notification_endpoint", "fieldtype": "Data", "label": "Notification API Endpoint"},
-  {"fieldname": "remarks", "fieldtype": "Small Text", "label": "Remarks"}
+  {
+   "fieldname": "tab_overview",
+   "fieldtype": "Tab Break",
+   "label": "Overview"
+  },
+  {
+   "fieldname": "section_status",
+   "fieldtype": "Section Break",
+   "label": "DMR Status"
+  },
+  {
+   "default": "DMR-.YY.-",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "DMR-.YY.-",
+   "reqd": 1,
+   "set_only_once": 1
+  },
+  {
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Draft\nIn Review\nPending Disposition\nPending Return Rejection\nReturn Rejection Completed\nEscalated\nClosed\nCancelled",
+   "reqd": 1
+  },
+  {
+   "fieldname": "dmr_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "DMR Type",
+   "options": "\nIQC\nIPQC\nOQC\nCustomer Complaint",
+   "reqd": 1
+  },
+  {
+   "fieldname": "escalation_level",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Escalation Level",
+   "options": "\nL1\nL2\nL3"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "fieldname": "column_status_source",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "source_doctype",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Source DocType",
+   "options": "\nQuality Inspection\nProduction Quality Check\nDelivery Note"
+  },
+  {
+   "fieldname": "source_name",
+   "fieldtype": "Dynamic Link",
+   "in_standard_filter": 1,
+   "label": "Source Document",
+   "options": "source_doctype"
+  },
+  {
+   "fieldname": "source_date",
+   "fieldtype": "Date",
+   "label": "Source Date"
+  },
+  {
+   "fieldname": "reference_number",
+   "fieldtype": "Data",
+   "label": "Reference Number"
+  },
+  {
+   "fieldname": "source_detail",
+   "fieldtype": "Data",
+   "label": "Source Detail"
+  },
+  {
+   "fieldname": "section_defect_item",
+   "fieldtype": "Section Break",
+   "label": "Defect Item"
+  },
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "in_global_search": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Item Code",
+   "options": "Item",
+   "reqd": 1
+  },
+  {
+   "fieldname": "item_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Item Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "qty",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Defect Qty"
+  },
+  {
+   "fieldname": "uom",
+   "fieldtype": "Link",
+   "label": "UOM",
+   "options": "UOM"
+  },
+  {
+   "fieldname": "column_defect_item",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "occurrence_location",
+   "fieldtype": "Data",
+   "label": "Occurrence Location"
+  },
+  {
+   "fieldname": "section_defect_codes",
+   "fieldtype": "Section Break",
+   "label": "Defect Codes"
+  },
+  {
+   "fieldname": "defects",
+   "fieldtype": "Table",
+   "label": "Defect Codes",
+   "options": "DMR Defect"
+  },
+  {
+   "fieldname": "tab_party_disposition",
+   "fieldtype": "Tab Break",
+   "label": "Party & Disposition"
+  },
+  {
+   "fieldname": "section_party",
+   "fieldtype": "Section Break",
+   "label": "Party"
+  },
+  {
+   "depends_on": "eval:doc.dmr_type=='IQC'",
+   "fieldname": "supplier",
+   "fieldtype": "Link",
+   "label": "Supplier",
+   "options": "Supplier"
+  },
+  {
+   "depends_on": "eval:doc.dmr_type=='Customer Complaint'",
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "Customer",
+   "options": "Customer"
+  },
+  {
+   "fieldname": "section_customer_complaint",
+   "fieldtype": "Section Break",
+   "label": "Customer Complaint"
+  },
+  {
+   "depends_on": "eval:doc.dmr_type=='Customer Complaint'",
+   "fieldname": "customer_requirement",
+   "fieldtype": "Select",
+   "label": "Customer Requirement",
+   "options": "\nReturn\nExchange"
+  },
+  {
+   "depends_on": "eval:doc.dmr_type=='Customer Complaint' && doc.customer_requirement=='Return'",
+   "fieldname": "actual_return_qty",
+   "fieldtype": "Float",
+   "label": "Actual Return Qty"
+  },
+  {
+   "depends_on": "eval:doc.dmr_type=='Customer Complaint'",
+   "fieldname": "actual_exchange_qty",
+   "fieldtype": "Float",
+   "label": "Actual Exchange Qty"
+  },
+  {
+   "fieldname": "column_customer_complaint",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.dmr_type=='Customer Complaint'",
+   "fieldname": "first_exchange_stock_entry",
+   "fieldtype": "Link",
+   "label": "First Exchange Stock Entry",
+   "options": "Stock Entry",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.dmr_type=='Customer Complaint'",
+   "fieldname": "disposition_stock_entry",
+   "fieldtype": "Link",
+   "label": "Disposition Stock Entry",
+   "options": "Stock Entry",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_iqc_return",
+   "fieldtype": "Section Break",
+   "label": "IQC Return Rejection",
+   "collapsible": 1
+  },
+  {
+   "depends_on": "eval:doc.dmr_type=='IQC'",
+   "fieldname": "requires_return_rejection",
+   "fieldtype": "Check",
+   "label": "Requires Return Rejection"
+  },
+  {
+   "depends_on": "eval:doc.dmr_type=='IQC'",
+   "fieldname": "return_rejection_status",
+   "fieldtype": "Select",
+   "label": "Return Rejection Status",
+   "options": "\nNot Required\nPending\nCompleted\nCancelled"
+  },
+  {
+   "depends_on": "eval:doc.dmr_type=='IQC'",
+   "fieldname": "purchase_return",
+   "fieldtype": "Link",
+   "label": "Purchase Return Reference",
+   "options": "Purchase Receipt"
+  },
+  {
+   "fieldname": "column_iqc_return",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.dmr_type=='Customer Complaint'",
+   "fieldname": "original_delivery_note",
+   "fieldtype": "Link",
+   "label": "Original Delivery Note",
+   "options": "Delivery Note"
+  },
+  {
+   "depends_on": "eval:doc.dmr_type=='Customer Complaint' && doc.customer_requirement=='Return'",
+   "fieldname": "delivery_note_return",
+   "fieldtype": "Link",
+   "label": "Delivery Note Return",
+   "options": "Delivery Note"
+  },
+  {
+   "default": "DMR-REJ",
+   "depends_on": "eval:doc.dmr_type=='Customer Complaint' && doc.customer_requirement=='Return'",
+   "fieldname": "return_reason",
+   "fieldtype": "Data",
+   "label": "Return Reason"
+  },
+  {
+   "fieldname": "section_reinspection",
+   "fieldtype": "Section Break",
+   "label": "Reinspection Results"
+  },
+  {
+   "depends_on": "eval:doc.dmr_type=='Customer Complaint'",
+   "fieldname": "reinspection_results",
+   "fieldtype": "Table",
+   "label": "Reinspection Results",
+   "options": "DMR Reinspection Result"
+  },
+  {
+   "fieldname": "tab_workflow",
+   "fieldtype": "Tab Break",
+   "label": "Workflow"
+  },
+  {
+   "fieldname": "section_workflow",
+   "fieldtype": "Section Break",
+   "label": "Workflow / Notification",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "assigned_role",
+   "fieldtype": "Link",
+   "label": "Assigned Role",
+   "options": "Role"
+  },
+  {
+   "fieldname": "notification_endpoint",
+   "fieldtype": "Data",
+   "label": "Notification API Endpoint"
+  },
+  {
+   "fieldname": "section_remarks",
+   "fieldtype": "Section Break",
+   "label": "Remarks"
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
@@ -98,12 +369,67 @@
  "name": "DMR",
  "owner": "Administrator",
  "permissions": [
-  {"create": 1, "delete": 1, "email": 1, "export": 1, "print": 1, "read": 1, "report": 1, "role": "System Manager", "share": 1, "write": 1},
-  {"create": 1, "email": 1, "export": 1, "print": 1, "read": 1, "report": 1, "role": "Quality Manager", "share": 1, "write": 1},
-  {"create": 1, "email": 1, "export": 1, "print": 1, "read": 1, "report": 1, "role": "Quality User", "share": 1, "write": 1},
-  {"email": 1, "export": 1, "print": 1, "read": 1, "report": 1, "role": "Manufacturing Manager", "share": 1},
-  {"email": 1, "export": 1, "print": 1, "read": 1, "report": 1, "role": "Manufacturing User", "share": 1},
-  {"email": 1, "export": 1, "print": 1, "read": 1, "report": 1, "role": "Stock User", "share": 1}
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Quality Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Quality User",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Manufacturing Manager",
+   "share": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Manufacturing User",
+   "share": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Stock User",
+   "share": 1
+  }
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

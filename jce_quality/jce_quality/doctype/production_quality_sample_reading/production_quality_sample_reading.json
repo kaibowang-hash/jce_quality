@@ -26,7 +26,8 @@
    "fieldtype": "Int",
    "in_list_view": 1,
    "label": "Sample No.",
-   "reqd": 1
+   "reqd": 1,
+   "columns": 1
   },
   {
    "fieldname": "specification",
@@ -34,13 +35,15 @@
    "in_list_view": 1,
    "label": "Parameter",
    "options": "Quality Inspection Parameter",
-   "reqd": 1
+   "reqd": 1,
+   "columns": 2
   },
   {
    "fieldname": "reading_value",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Reading Value"
+   "label": "Reading Value",
+   "columns": 2
   },
   {
    "default": "Accepted",
@@ -49,7 +52,8 @@
    "in_list_view": 1,
    "label": "Status",
    "options": "\nAccepted\nRejected",
-   "read_only": 1
+   "read_only": 1,
+   "columns": 1
   },
   {
    "fieldname": "source_reading_idx",
@@ -61,59 +65,77 @@
    "fieldtype": "Link",
    "label": "Parameter Group",
    "options": "Quality Inspection Parameter Group",
-   "read_only": 1
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1
   },
   {
    "fieldname": "inspection_method",
    "fieldtype": "Link",
    "label": "Inspection Method",
    "options": "Quality Inspection Method",
-   "read_only": 1
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 2
   },
   {
    "fieldname": "inspection_standard",
    "fieldtype": "Small Text",
    "label": "Inspection Standard",
-   "read_only": 1
+   "read_only": 1,
+   "in_list_view": 0,
+   "columns": 2
   },
   {
    "fieldname": "value",
    "fieldtype": "Data",
    "label": "Acceptance Criteria Value",
-   "read_only": 1
+   "read_only": 1,
+   "in_list_view": 0,
+   "columns": 1
   },
   {
    "default": "1",
    "fieldname": "numeric",
    "fieldtype": "Check",
    "label": "Numeric",
-   "read_only": 1
+   "read_only": 1,
+   "in_list_view": 0,
+   "columns": 1
   },
   {
    "fieldname": "min_value",
    "fieldtype": "Float",
    "label": "Minimum Value",
-   "read_only": 1
+   "read_only": 1,
+   "in_list_view": 0,
+   "columns": 1
   },
   {
    "fieldname": "max_value",
    "fieldtype": "Float",
    "label": "Maximum Value",
-   "read_only": 1
+   "read_only": 1,
+   "in_list_view": 0,
+   "columns": 1
   },
   {
    "default": "0",
    "fieldname": "formula_based_criteria",
    "fieldtype": "Check",
    "label": "Formula Based Criteria",
-   "read_only": 1
+   "read_only": 1,
+   "in_list_view": 0,
+   "columns": 1
   },
   {
    "fieldname": "acceptance_formula",
    "fieldtype": "Code",
    "label": "Acceptance Criteria Formula",
    "options": "PythonExpression",
-   "read_only": 1
+   "read_only": 1,
+   "in_list_view": 0,
+   "columns": 2
   }
  ],
  "index_web_pages_for_search": 1,

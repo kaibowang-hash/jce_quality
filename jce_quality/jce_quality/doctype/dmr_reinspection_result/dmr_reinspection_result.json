@@ -13,13 +13,63 @@
   "remarks"
  ],
  "fields": [
-  {"fieldname": "result_type", "fieldtype": "Select", "in_list_view": 1, "label": "Result Type", "options": "\nOK\nNG", "reqd": 1},
-  {"fieldname": "item_code", "fieldtype": "Link", "in_list_view": 1, "label": "Item", "options": "Item", "read_only": 1},
-  {"fieldname": "qty", "fieldtype": "Float", "in_list_view": 1, "label": "Qty", "reqd": 1},
-  {"fieldname": "uom", "fieldtype": "Link", "label": "UOM", "options": "UOM"},
-  {"fieldname": "source_warehouse", "fieldtype": "Link", "in_list_view": 1, "label": "Source Warehouse", "options": "Warehouse"},
-  {"fieldname": "target_warehouse", "fieldtype": "Link", "in_list_view": 1, "label": "Target Warehouse", "options": "Warehouse"},
-  {"fieldname": "remarks", "fieldtype": "Small Text", "label": "Remarks"}
+  {
+   "fieldname": "result_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Result Type",
+   "options": "\nOK\nNG",
+   "reqd": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Item",
+   "options": "Item",
+   "read_only": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "qty",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Qty",
+   "reqd": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "uom",
+   "fieldtype": "Link",
+   "label": "UOM",
+   "options": "UOM",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "source_warehouse",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Source Warehouse",
+   "options": "Warehouse",
+   "columns": 2
+  },
+  {
+   "fieldname": "target_warehouse",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Target Warehouse",
+   "options": "Warehouse",
+   "columns": 2
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks",
+   "in_list_view": 0,
+   "columns": 1
+  }
  ],
  "istable": 1,
  "modified": "2026-05-05 00:00:00.000000",

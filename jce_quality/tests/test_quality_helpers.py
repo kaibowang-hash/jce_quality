@@ -27,12 +27,15 @@ class TestQualityHelpers(unittest.TestCase):
 
 	def test_first_article_requires_schedule_flag(self):
 		rule = frappe._dict(is_mandatory=1)
+		optional_rule = frappe._dict(is_mandatory=0)
 
 		self.assertFalse(is_first_article_required_for_row(frappe._dict(custom_is_first_article=0)))
 		self.assertTrue(is_first_article_required_for_row(frappe._dict(custom_is_first_article=1)))
 		self.assertTrue(is_first_article_required_for_row(frappe._dict(first_article_required=1)))
 		self.assertEqual(get_required_check_count(rule, "First Article", frappe._dict(custom_is_first_article=0)), 0)
 		self.assertEqual(get_required_check_count(rule, "First Article", frappe._dict(custom_is_first_article=1)), 1)
+		self.assertEqual(get_required_check_count(optional_rule, "First Article", frappe._dict(custom_is_first_article=1)), 1)
+		self.assertEqual(get_required_check_count(None, "First Article", frappe._dict(custom_is_first_article=1)), 1)
 
 	def test_summary_meets_requirements_uses_patrol_count(self):
 		summary = {

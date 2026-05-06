@@ -301,10 +301,10 @@ def get_quality_requirements(scheduling_doc, row, item_group=None, rules_by_node
 
 
 def get_required_check_count(rule, node: str, scheduling_row=None) -> int:
-	if not rule or not cint(rule_get(rule, "is_mandatory")):
-		return 0
+	if node == "First Article":
+		return 1 if is_first_article_required_for_row(scheduling_row) else 0
 
-	if node == "First Article" and not is_first_article_required_for_row(scheduling_row):
+	if not rule or not cint(rule_get(rule, "is_mandatory")):
 		return 0
 
 	if node == "Patrol":
@@ -1812,6 +1812,7 @@ def get_delivery_oqc_items(delivery_note: str):
 	groups = build_delivery_oqc_groups(dn)
 	existing = get_delivery_oqc_checks_map(dn.name)
 	item_group_map = get_item_group_map([group.get("item_code") for group in groups.values()])
+	item_customer_code_map = get_item_customer_code_map([group.get("item_code") for group in groups.values()])
 	oqc_rules = get_enabled_quality_rules(SHIPPING_QUALITY_NODE)
 	rows = []
 	for key, group in groups.items():
@@ -1832,6 +1833,7 @@ def get_delivery_oqc_items(delivery_note: str):
 				"source_doctype": "Delivery Note",
 				"source_name": dn.name,
 				"delivery_note": dn.name,
+				"customer_code": item_customer_code_map.get(group.get("item_code")),
 				"delivery_note_docstatus": dn.docstatus,
 				"delivery_note_status": dn.get("status"),
 				"source_detail": key,
@@ -1932,6 +1934,7 @@ def get_delivery_plan_oqc_items(delivery_plan: str) -> list[dict]:
 	groups = get_delivery_plan_oqc_groups(plan)
 	existing = get_delivery_plan_oqc_checks_map(plan.name)
 	item_group_map = get_item_group_map([group.get("item_code") for group in groups.values()])
+	item_customer_code_map = get_item_customer_code_map([group.get("item_code") for group in groups.values()])
 	oqc_rules = get_enabled_quality_rules(SHIPPING_QUALITY_NODE)
 	rows = []
 	for source_detail, group in groups.items():
@@ -1952,6 +1955,7 @@ def get_delivery_plan_oqc_items(delivery_plan: str) -> list[dict]:
 				"source_doctype": "Delivery Plan",
 				"source_name": plan.name,
 				"delivery_plan": plan.name,
+				"customer_code": item_customer_code_map.get(group.get("item_code")),
 				"delivery_plan_docstatus": plan.docstatus,
 				"source_detail": source_detail,
 				"check_name": check.name if check else None,

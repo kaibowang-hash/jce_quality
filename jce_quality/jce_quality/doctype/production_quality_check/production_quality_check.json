@@ -6,74 +6,97 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "tab_overview",
+  "section_status",
   "naming_series",
   "status",
   "quality_node",
   "overall_status",
-  "column_break_status",
+  "column_status_time",
   "inspection_started_at",
   "inspection_finished_at",
   "inspected_by",
-  "source_section",
+  "posting_date",
+  "section_source_context",
   "source_type",
   "source_doctype",
   "source_name",
   "source_detail",
-  "source_group_key",
-  "source_rows",
+  "column_source_context",
   "work_order_scheduling",
   "scheduling_item",
   "work_order",
   "company",
+  "section_item_context",
   "item_code",
   "item_name",
   "item_group",
   "uom",
-  "column_break_source",
-  "posting_date",
-  "shift_type",
+  "column_item_context",
   "plant_floor",
   "workstation",
   "mold",
+  "shift_type",
+  "customer",
+  "section_quantity_context",
   "scheduling_qty",
   "completed_qty",
   "defect_qty",
+  "column_quantity_context",
   "manual_qty",
-  "customer",
-  "standard_section",
+  "tab_inspection_standard",
+  "section_standard",
   "production_quality_rule",
   "quality_inspection_template",
   "manual_inspection",
   "requires_sample",
+  "column_sample_standard",
   "required_sample_type",
   "sample_manager",
   "sample_ref",
   "sample_status",
   "sample_type",
-  "readings_section",
+  "section_readings",
   "readings",
-  "defects_section",
+  "section_defects",
   "defects",
-  "defect_photos_section",
+  "section_photos",
   "defect_photos",
-  "disposition_section",
+  "section_remarks",
+  "remarks",
+  "inspection_photo",
+  "tab_disposition",
+  "section_ng_disposition",
   "disposition",
   "disposition_remarks",
-  "column_break_disposition",
+  "column_ng_disposition",
   "disposition_by",
   "disposition_at",
-  "release_approved",
-  "release_approved_by",
-  "release_approved_at",
+  "section_release",
   "release_status",
   "temporary_release_note",
   "escalated_dmr",
-  "remarks",
-  "attachments_section",
-  "inspection_photo",
+  "column_release",
+  "release_approved",
+  "release_approved_by",
+  "release_approved_at",
+  "tab_traceability",
+  "section_source_rows",
+  "source_group_key",
+  "source_rows",
   "amended_from"
  ],
  "fields": [
+  {
+   "fieldname": "tab_overview",
+   "fieldtype": "Tab Break",
+   "label": "Overview"
+  },
+  {
+   "fieldname": "section_status",
+   "fieldtype": "Section Break",
+   "label": "Inspection Status"
+  },
   {
    "fieldname": "naming_series",
    "fieldtype": "Select",
@@ -113,7 +136,7 @@
    "reqd": 1
   },
   {
-   "fieldname": "column_break_status",
+   "fieldname": "column_status_time",
    "fieldtype": "Column Break"
   },
   {
@@ -136,9 +159,16 @@
    "reqd": 1
   },
   {
-   "fieldname": "source_section",
+   "fieldname": "posting_date",
+   "fieldtype": "Date",
+   "in_standard_filter": 1,
+   "label": "Posting Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_source_context",
    "fieldtype": "Section Break",
-   "label": "Source"
+   "label": "Source & Context"
   },
   {
    "default": "Production Scheduling",
@@ -168,15 +198,8 @@
    "search_index": 1
   },
   {
-   "fieldname": "source_group_key",
-   "fieldtype": "Data",
-   "label": "Source Group Key",
-   "search_index": 1
-  },
-  {
-   "fieldname": "source_rows",
-   "fieldtype": "Long Text",
-   "label": "Source Rows"
+   "fieldname": "column_source_context",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "work_order_scheduling",
@@ -206,6 +229,11 @@
    "label": "Company",
    "options": "Company",
    "read_only": 1
+  },
+  {
+   "fieldname": "section_item_context",
+   "fieldtype": "Section Break",
+   "label": "Item & Workstation"
   },
   {
    "fieldname": "item_code",
@@ -238,22 +266,8 @@
    "options": "UOM"
   },
   {
-   "fieldname": "column_break_source",
+   "fieldname": "column_item_context",
    "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "posting_date",
-   "fieldtype": "Date",
-   "in_standard_filter": 1,
-   "label": "Posting Date",
-   "read_only": 1
-  },
-  {
-   "fieldname": "shift_type",
-   "fieldtype": "Data",
-   "in_standard_filter": 1,
-   "label": "Shift Type",
-   "read_only": 1
   },
   {
    "fieldname": "plant_floor",
@@ -278,6 +292,24 @@
    "read_only": 1
   },
   {
+   "fieldname": "shift_type",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "label": "Shift Type",
+   "read_only": 1
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "Customer",
+   "options": "Customer"
+  },
+  {
+   "fieldname": "section_quantity_context",
+   "fieldtype": "Section Break",
+   "label": "Quantity"
+  },
+  {
    "fieldname": "scheduling_qty",
    "fieldtype": "Float",
    "label": "Scheduling Qty",
@@ -296,18 +328,21 @@
    "read_only": 1
   },
   {
+   "fieldname": "column_quantity_context",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "manual_qty",
    "fieldtype": "Float",
    "label": "Manual / OQC Qty"
   },
   {
-   "fieldname": "customer",
-   "fieldtype": "Link",
-   "label": "Customer",
-   "options": "Customer"
+   "fieldname": "tab_inspection_standard",
+   "fieldtype": "Tab Break",
+   "label": "Inspection"
   },
   {
-   "fieldname": "standard_section",
+   "fieldname": "section_standard",
    "fieldtype": "Section Break",
    "label": "Inspection Standard"
   },
@@ -336,6 +371,10 @@
    "fieldtype": "Check",
    "label": "Requires Sample",
    "read_only": 1
+  },
+  {
+   "fieldname": "column_sample_standard",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "required_sample_type",
@@ -369,7 +408,7 @@
    "read_only": 1
   },
   {
-   "fieldname": "readings_section",
+   "fieldname": "section_readings",
    "fieldtype": "Section Break",
    "label": "Readings"
   },
@@ -380,7 +419,7 @@
    "options": "Quality Inspection Reading"
   },
   {
-   "fieldname": "defects_section",
+   "fieldname": "section_defects",
    "fieldtype": "Section Break",
    "label": "Defects"
   },
@@ -391,7 +430,7 @@
    "options": "Production Quality Defect"
   },
   {
-   "fieldname": "defect_photos_section",
+   "fieldname": "section_photos",
    "fieldtype": "Section Break",
    "label": "Defect Photos"
   },
@@ -403,7 +442,29 @@
    "options": "Production Quality Photo"
   },
   {
-   "fieldname": "disposition_section",
+   "fieldname": "section_remarks",
+   "fieldtype": "Section Break",
+   "label": "Remarks & Attachment"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "remarks",
+   "fieldtype": "Text",
+   "label": "Remarks"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "inspection_photo",
+   "fieldtype": "Attach Image",
+   "label": "Inspection Photo"
+  },
+  {
+   "fieldname": "tab_disposition",
+   "fieldtype": "Tab Break",
+   "label": "Disposition"
+  },
+  {
+   "fieldname": "section_ng_disposition",
    "fieldtype": "Section Break",
    "label": "NG Disposition"
   },
@@ -421,7 +482,7 @@
    "label": "Disposition Remarks"
   },
   {
-   "fieldname": "column_break_disposition",
+   "fieldname": "column_ng_disposition",
    "fieldtype": "Column Break"
   },
   {
@@ -440,27 +501,9 @@
    "read_only": 1
   },
   {
-   "allow_on_submit": 1,
-   "default": "0",
-   "fieldname": "release_approved",
-   "fieldtype": "Check",
-   "label": "Concession Release Approved",
-   "read_only": 1
-  },
-  {
-   "allow_on_submit": 1,
-   "fieldname": "release_approved_by",
-   "fieldtype": "Link",
-   "label": "Approved By",
-   "options": "User",
-   "read_only": 1
-  },
-  {
-   "allow_on_submit": 1,
-   "fieldname": "release_approved_at",
-   "fieldtype": "Datetime",
-   "label": "Approved At",
-   "read_only": 1
+   "fieldname": "section_release",
+   "fieldtype": "Section Break",
+   "label": "Release / Escalation"
   },
   {
    "allow_on_submit": 1,
@@ -486,21 +529,53 @@
    "read_only": 1
   },
   {
-   "allow_on_submit": 1,
-   "fieldname": "remarks",
-   "fieldtype": "Text",
-   "label": "Remarks"
+   "fieldname": "column_release",
+   "fieldtype": "Column Break"
   },
   {
-   "fieldname": "attachments_section",
+   "allow_on_submit": 1,
+   "default": "0",
+   "fieldname": "release_approved",
+   "fieldtype": "Check",
+   "label": "Concession Release Approved",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "release_approved_by",
+   "fieldtype": "Link",
+   "label": "Approved By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "release_approved_at",
+   "fieldtype": "Datetime",
+   "label": "Approved At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tab_traceability",
+   "fieldtype": "Tab Break",
+   "label": "Traceability"
+  },
+  {
+   "fieldname": "section_source_rows",
    "fieldtype": "Section Break",
-   "label": "Attachment"
+   "label": "Source Rows",
+   "collapsible": 1
   },
   {
-   "allow_on_submit": 1,
-   "fieldname": "inspection_photo",
-   "fieldtype": "Attach Image",
-   "label": "Inspection Photo"
+   "fieldname": "source_group_key",
+   "fieldtype": "Data",
+   "label": "Source Group Key",
+   "search_index": 1
+  },
+  {
+   "fieldname": "source_rows",
+   "fieldtype": "Long Text",
+   "label": "Source Rows"
   },
   {
    "fieldname": "amended_from",

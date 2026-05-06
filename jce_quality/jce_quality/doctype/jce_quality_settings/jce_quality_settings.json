@@ -4,22 +4,99 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "tab_operational_settings",
+  "section_warehouse_settings",
   "warehouse_settings",
-  "reports_section",
+  "section_print_formats",
   "print_format_mappings",
-  "api_settings",
+  "tab_terminal_permissions",
+  "section_terminal_roles",
   "terminal_action_roles",
+  "section_gate_roles",
   "quality_gate_override_roles",
-  "default_template_suspension_role"
+  "default_template_suspension_role",
+  "tab_api_settings",
+  "section_api_settings",
+  "api_settings"
  ],
  "fields": [
-  {"fieldname": "warehouse_settings", "fieldtype": "Table", "label": "Warehouse Settings", "options": "JCE Quality Warehouse Setting"},
-  {"fieldname": "reports_section", "fieldtype": "Section Break", "label": "Reports / Integration"},
-  {"fieldname": "print_format_mappings", "fieldtype": "Table", "label": "Print Format Mappings", "options": "JCE Quality Print Format Mapping"},
-  {"fieldname": "api_settings", "fieldtype": "Table", "label": "API Settings", "options": "JCE Quality API Setting"},
-  {"fieldname": "terminal_action_roles", "fieldtype": "Table", "label": "Terminal Action Roles", "options": "JCE Quality Terminal Action Role"},
-  {"fieldname": "quality_gate_override_roles", "fieldtype": "Table", "label": "Direct Quality Gate Override Roles", "options": "JCE Quality Gate Override Role"},
-  {"default": "Quality Manager", "fieldname": "default_template_suspension_role", "fieldtype": "Link", "label": "Default Template Suspension Role", "options": "Role"}
+  {
+   "fieldname": "tab_operational_settings",
+   "fieldtype": "Tab Break",
+   "label": "Operational Settings"
+  },
+  {
+   "fieldname": "section_warehouse_settings",
+   "fieldtype": "Section Break",
+   "label": "Warehouse Settings"
+  },
+  {
+   "fieldname": "warehouse_settings",
+   "fieldtype": "Table",
+   "label": "Warehouse Settings",
+   "options": "JCE Quality Warehouse Setting"
+  },
+  {
+   "fieldname": "section_print_formats",
+   "fieldtype": "Section Break",
+   "label": "Print Format Mappings"
+  },
+  {
+   "fieldname": "print_format_mappings",
+   "fieldtype": "Table",
+   "label": "Print Format Mappings",
+   "options": "JCE Quality Print Format Mapping"
+  },
+  {
+   "fieldname": "tab_terminal_permissions",
+   "fieldtype": "Tab Break",
+   "label": "Terminal Permissions"
+  },
+  {
+   "fieldname": "section_terminal_roles",
+   "fieldtype": "Section Break",
+   "label": "Terminal Action Roles"
+  },
+  {
+   "fieldname": "terminal_action_roles",
+   "fieldtype": "Table",
+   "label": "Terminal Action Roles",
+   "options": "JCE Quality Terminal Action Role"
+  },
+  {
+   "fieldname": "section_gate_roles",
+   "fieldtype": "Section Break",
+   "label": "Quality Gate Override Roles"
+  },
+  {
+   "fieldname": "quality_gate_override_roles",
+   "fieldtype": "Table",
+   "label": "Direct Quality Gate Override Roles",
+   "options": "JCE Quality Gate Override Role"
+  },
+  {
+   "default": "Quality Manager",
+   "fieldname": "default_template_suspension_role",
+   "fieldtype": "Link",
+   "label": "Default Template Suspension Role",
+   "options": "Role"
+  },
+  {
+   "fieldname": "tab_api_settings",
+   "fieldtype": "Tab Break",
+   "label": "API Settings"
+  },
+  {
+   "fieldname": "section_api_settings",
+   "fieldtype": "Section Break",
+   "label": "API Settings"
+  },
+  {
+   "fieldname": "api_settings",
+   "fieldtype": "Table",
+   "label": "API Settings",
+   "options": "JCE Quality API Setting"
+  }
  ],
  "issingle": 1,
  "modified": "2026-05-05 00:00:00.000000",
@@ -28,9 +105,32 @@
  "name": "JCE Quality Settings",
  "owner": "Administrator",
  "permissions": [
-  {"create": 1, "delete": 1, "email": 1, "print": 1, "read": 1, "role": "System Manager", "share": 1, "write": 1},
-  {"create": 1, "email": 1, "print": 1, "read": 1, "role": "Quality Manager", "share": 1, "write": 1},
-  {"email": 1, "print": 1, "read": 1, "role": "Quality User", "share": 1}
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Quality Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Quality User",
+   "share": 1
+  }
  ],
  "sort_field": "modified",
  "sort_order": "DESC"

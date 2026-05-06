@@ -20,7 +20,8 @@
    "in_list_view": 1,
    "label": "Defect Code",
    "options": "Quality Defect Code",
-   "reqd": 1
+   "reqd": 1,
+   "columns": 2
   },
   {
    "fetch_from": "defect_code.defect_name",
@@ -28,7 +29,8 @@
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Defect Name",
-   "read_only": 1
+   "read_only": 1,
+   "columns": 2
   },
   {
    "default": "1",
@@ -37,33 +39,42 @@
    "in_list_view": 1,
    "label": "Quantity",
    "non_negative": 1,
-   "reqd": 1
+   "reqd": 1,
+   "columns": 1
   },
   {
    "fetch_from": "defect_code.category",
    "fieldname": "category",
    "fieldtype": "Data",
    "label": "Defect Category",
-   "read_only": 1
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1
   },
   {
    "fetch_from": "defect_code.severity",
    "fieldname": "severity",
    "fieldtype": "Data",
    "label": "Severity",
-   "read_only": 1
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1
   },
   {
    "fetch_from": "defect_code.description",
    "fieldname": "description",
    "fieldtype": "Small Text",
    "label": "Description",
-   "read_only": 1
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 2
   },
   {
    "fieldname": "remarks",
    "fieldtype": "Small Text",
-   "label": "Remarks"
+   "label": "Remarks",
+   "in_list_view": 0,
+   "columns": 1
   }
  ],
  "index_web_pages_for_search": 1,
