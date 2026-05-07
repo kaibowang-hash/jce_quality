@@ -240,6 +240,7 @@ class QualityInspectionTerminal {
 		this.body.find('[data-action="manual-check"]').on("click", () => this.open_manual_check_dialog());
 		this.body.find('[data-action="oqc-check"]').on("click", () => this.render_oqc_terminal_view());
 		this.render_filters();
+		this.bind_mobile_input_focus();
 		this.render_tasks();
 	}
 
@@ -632,6 +633,7 @@ class QualityInspectionTerminal {
 		this.body.find('[data-action="oqc-load"]').on("click", () => this.refresh_oqc_delivery_notes());
 		this.body.find('[data-action="clear-delivery-note"]').on("click", () => this.select_oqc_delivery_note(""));
 		this.render_oqc_filters();
+		this.bind_mobile_input_focus();
 		if (options.refresh !== false) {
 			this.refresh_oqc_delivery_notes();
 		}
@@ -741,11 +743,11 @@ class QualityInspectionTerminal {
 		}).then((r) => {
 			this.oqcDeliveryNotes = r.message || [];
 			this.render_oqc_delivery_notes(this.oqcDeliveryNotes);
+			if (this.oqcFilters.source_type === "Delivery Plan" && this.oqcFilters.delivery_plan) {
+				return this.load_delivery_plan_oqc_items(this.oqcFilters.delivery_plan);
+			}
 			if (this.oqcFilters.delivery_note) {
 				return this.load_oqc_items(this.oqcFilters.delivery_note);
-			}
-			if (this.oqcFilters.source_type === "Delivery Plan" && this.oqcFilters.delivery_plan && !this.oqcDeliveryNotes.length) {
-				return this.load_delivery_plan_oqc_items(this.oqcFilters.delivery_plan);
 			}
 			this.render_oqc_items_empty(__("Select Delivery Note."));
 		}).catch((error) => {
@@ -794,12 +796,12 @@ class QualityInspectionTerminal {
 		this.render_oqc_delivery_notes(this.oqcDeliveryNotes || []);
 		this.body.find(".jce-q-oqc-items-panel .jce-q-section-head b").text(this.oqcFilters.delivery_note || __("Select Delivery Note."));
 		if (!this.oqcFilters.delivery_note) {
-			if (
-				this.oqcFilters.source_type === "Delivery Plan"
-				&& this.oqcFilters.delivery_plan
-				&& !(this.oqcDeliveryNotes || []).length
-			) {
+			if (this.oqcFilters.source_type === "Delivery Plan" && this.oqcFilters.delivery_plan) {
 				this.body.find(".jce-q-oqc-items-panel .jce-q-section-head b").text(this.oqcFilters.delivery_plan);
+				if (options.refreshList) {
+					this.refresh_oqc_delivery_notes();
+					return;
+				}
 				this.load_delivery_plan_oqc_items(this.oqcFilters.delivery_plan);
 			} else {
 				this.render_oqc_items_empty(__("Select Delivery Note."));
@@ -1029,6 +1031,7 @@ class QualityInspectionTerminal {
 		this.bind_focus_events(submitted);
 		this.setup_sample_control(submitted);
 		this.setup_defect_controls(submitted);
+		this.bind_mobile_input_focus();
 		this.render_task_drawer();
 		this.setup_split_resizer();
 		this.render_current_drawing();
@@ -1962,6 +1965,35 @@ class QualityInspectionTerminal {
 	show_drawing() {
 		this.drawingHidden = false;
 		this.render_focus_shell();
+	}
+
+	bind_mobile_input_focus() {
+		const selector = [
+			".jce-q-filter input:not([type='hidden']):not([type='checkbox']):not([type='radio']):not([disabled])",
+			".jce-q-inspection-pane input:not([type='hidden']):not([type='checkbox']):not([type='radio']):not([disabled])",
+			".jce-q-sheet input:not([type='hidden']):not([type='checkbox']):not([type='radio']):not([disabled])",
+			".jce-q-terminal textarea:not([disabled])",
+		].join(", ");
+		this.body
+			.off("touchend.jceMobileInputFocus", selector)
+			.on("touchend.jceMobileInputFocus", selector, (event) => {
+				if (!this.is_phone_portrait()) return;
+				const input = event.currentTarget;
+				const type = (input.getAttribute("type") || "text").toLowerCase();
+				if (["button", "color", "date", "datetime-local", "file", "month", "reset", "submit", "time", "week"].includes(type)) {
+					return;
+				}
+				if (document.activeElement === input) return;
+				try {
+					input.focus({ preventScroll: true });
+				} catch {
+					input.focus();
+				}
+			});
+	}
+
+	is_phone_portrait() {
+		return !!window.matchMedia?.("(max-width: 640px) and (orientation: portrait)")?.matches;
 	}
 
 	bind_fullscreen_change() {
@@ -5038,16 +5070,33 @@ class QualityInspectionTerminal {
 						overflow: visible;
 					}
 				}
-				@media (max-width: 640px) and (orientation: portrait) and (pointer: coarse) {
+				@media (max-width: 640px) and (orientation: portrait) {
 					.jce-q-task-shell {
 						padding: max(7px, env(safe-area-inset-top)) 8px max(12px, env(safe-area-inset-bottom));
 					}
-					.jce-q-list-header {
+					.jce-q-task-shell:not(.jce-q-oqc-shell) .jce-q-list-header {
+						align-items: flex-start;
+						flex-direction: row;
 						gap: 7px;
+						justify-content: space-between;
 						margin-bottom: 7px;
+					}
+					.jce-q-task-shell:not(.jce-q-oqc-shell) .jce-q-list-header > div:first-child {
+						flex: 1 1 auto;
+						min-width: 0;
 					}
 					.jce-q-list-header h2 {
 						font-size: 20px;
+					}
+					.jce-q-task-shell:not(.jce-q-oqc-shell) .jce-q-list-actions {
+						align-items: flex-start;
+						flex: 0 0 auto;
+						justify-content: flex-end;
+						margin-left: auto;
+						min-width: 34px;
+					}
+					.jce-q-task-shell:not(.jce-q-oqc-shell) .jce-q-list-actions .jce-q-fullscreen-button {
+						margin-left: auto;
 					}
 					.jce-q-filter-panel:not(.oqc) {
 						margin-bottom: 8px;
@@ -5059,10 +5108,16 @@ class QualityInspectionTerminal {
 						justify-content: space-between;
 						gap: 8px;
 						margin-bottom: 6px;
+						width: 100%;
+					}
+					.jce-q-filter-head .jce-q-filter-title {
+						flex: 1 1 auto;
+						min-width: 0;
 					}
 					.jce-q-filter-panel:not(.oqc) .jce-q-mobile-filter-refresh {
 						display: inline-flex !important;
 						flex: 0 0 auto;
+						margin-left: auto;
 						width: 34px !important;
 						min-width: 34px !important;
 						height: 34px;
@@ -5091,6 +5146,13 @@ class QualityInspectionTerminal {
 					.jce-q-readonly-link {
 						height: 34px;
 						min-height: 34px;
+					}
+					.jce-q-terminal input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]),
+					.jce-q-terminal textarea {
+						font-size: 16px;
+						touch-action: manipulation;
+						-webkit-user-select: text;
+						user-select: text;
 					}
 					.jce-q-focus-toolbar {
 						min-height: 0;
@@ -5124,6 +5186,7 @@ class QualityInspectionTerminal {
 					.jce-q-nav-buttons button {
 						flex: 0 0 auto;
 					}
+					.jce-q-task-shell:not(.jce-q-oqc-shell) .jce-q-list-header .jce-q-small-button.icon,
 					.jce-q-focus-toolbar .jce-q-small-button.icon,
 					.jce-q-oqc-shell .jce-q-small-button.icon {
 						width: 34px;
@@ -5188,6 +5251,7 @@ class QualityInspectionTerminal {
 						align-items: center;
 						flex-direction: row;
 						gap: 7px;
+						justify-content: space-between;
 						margin-bottom: 6px;
 					}
 					.jce-q-oqc-shell .jce-q-toolbar-left {
@@ -5195,6 +5259,7 @@ class QualityInspectionTerminal {
 						flex: 1 1 auto;
 						flex-direction: row;
 						gap: 7px;
+						justify-content: flex-start;
 						width: auto;
 						min-width: 0;
 					}
@@ -5217,6 +5282,8 @@ class QualityInspectionTerminal {
 						align-items: center;
 						flex-direction: row;
 						gap: 5px;
+						justify-content: flex-end;
+						margin-left: auto;
 						width: auto;
 					}
 					.jce-q-oqc-shell .jce-q-list-actions .jce-q-small-button.primary {
