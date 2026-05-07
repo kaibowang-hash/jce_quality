@@ -7,6 +7,7 @@ from jce_quality.services.quality import (
 	DELIVERY_NOTE_OQC_SOURCE_TYPE,
 	DELIVERY_PLAN_OQC_SOURCE_TYPE,
 	apply_rule_to_check,
+	get_delivery_plan_oqc_groups,
 	get_required_check_count,
 	is_first_article_required_for_row,
 	is_oqc_check_ready_for_email,
@@ -147,6 +148,69 @@ class TestQualityHelpers(unittest.TestCase):
 		self.assertIsNone(doc.production_quality_rule)
 		self.assertIsNone(doc.required_sample_type)
 		self.assertIsNone(doc.quality_inspection_template)
+
+	def test_delivery_plan_oqc_groups_fall_back_to_items_when_qty_rows_are_empty(self):
+		plan = frappe._dict(
+			item_qties=[
+				frappe._dict(
+					doctype="Delivery Plan Item Qty",
+					name="QTY-1",
+					idx=1,
+					item_code="ITEM-1",
+					planned_delivery_qty=0,
+					staging_qty=0,
+				)
+			],
+			items=[
+				frappe._dict(
+					doctype="Delivery Plan Item",
+					name="ITEM-ROW-1",
+					idx=1,
+					item_code="ITEM-1",
+					item_name="Item 1",
+					warehouse="WH-1",
+					uom="Nos",
+					planned_delivery_qty=5,
+				)
+			],
+		)
+
+		groups = get_delivery_plan_oqc_groups(plan)
+
+		self.assertEqual(list(groups), ["ITEM-ROW-1"])
+		self.assertEqual(groups["ITEM-ROW-1"]["qty"], 5)
+		self.assertEqual(groups["ITEM-ROW-1"]["source_rows"][0]["table"], "items")
+
+	def test_delivery_plan_oqc_groups_prefer_positive_qty_rows(self):
+		plan = frappe._dict(
+			item_qties=[
+				frappe._dict(
+					doctype="Delivery Plan Item Qty",
+					name="QTY-1",
+					idx=1,
+					item_code="ITEM-1",
+					item_name="Item 1",
+					warehouse="WH-1",
+					uom="Nos",
+					planned_delivery_qty=3,
+				)
+			],
+			items=[
+				frappe._dict(
+					doctype="Delivery Plan Item",
+					name="ITEM-ROW-1",
+					idx=1,
+					item_code="ITEM-1",
+					planned_delivery_qty=5,
+				)
+			],
+		)
+
+		groups = get_delivery_plan_oqc_groups(plan)
+
+		self.assertEqual(list(groups), ["QTY-1"])
+		self.assertEqual(groups["QTY-1"]["qty"], 3)
+		self.assertEqual(groups["QTY-1"]["source_rows"][0]["table"], "item_qties")
 
 	def test_frozen_summary_never_meets_requirements(self):
 		self.assertFalse(

@@ -61,7 +61,10 @@ class QualityInspectionTerminal {
 		this.oqcItems = [];
 		this.oqcControls = {};
 		this.refreshRequestId = 0;
+		this.oqcRequestId = 0;
+		this.oqcItemsRequestId = 0;
 		this.refreshTimer = null;
+		this.oqcRefreshTimer = null;
 		this.filtersRendered = false;
 		this.fullscreenActive = true;
 		this.nativeFullscreenRequested = false;
@@ -682,7 +685,9 @@ class QualityInspectionTerminal {
 			const control = frappe.ui.form.make_control({ parent: holder, df, render_input: true });
 			control.set_value(df.default || "");
 			control.$input.on("change", () => {
-				this.oqcFilters[df.fieldname] = control.get_value() || "";
+				const value = control.get_value() || "";
+				if ((this.oqcFilters[df.fieldname] || "") === value) return;
+				this.oqcFilters[df.fieldname] = value;
 				if (df.fieldname === "source_type") {
 					this.oqcFilters.delivery_note = "";
 					this.normalize_oqc_filters();
@@ -697,6 +702,7 @@ class QualityInspectionTerminal {
 				} else {
 					this.store_oqc_filters();
 					this.update_oqc_filter_visibility();
+					this.schedule_oqc_refresh();
 				}
 			});
 			this.oqcControls[df.fieldname] = control;
@@ -716,41 +722,58 @@ class QualityInspectionTerminal {
 		this.oqcControls.delivery_plan?.$wrapper.toggle(this.canUseDeliveryPlan && sourceType === "Delivery Plan");
 	}
 
+	schedule_oqc_refresh(delay = 180) {
+		clearTimeout(this.oqcRefreshTimer);
+		this.oqcRefreshTimer = setTimeout(() => {
+			this.oqcRefreshTimer = null;
+			if (this.mode === "oqc") {
+				this.refresh_oqc_delivery_notes();
+			}
+		}, delay);
+	}
+
 	refresh_oqc_delivery_notes() {
+		clearTimeout(this.oqcRefreshTimer);
+		this.oqcRefreshTimer = null;
 		this.normalize_oqc_filters();
 		this.store_oqc_filters();
+		const requestId = ++this.oqcRequestId;
+		this.oqcItemsRequestId++;
+		const filters = { ...this.oqcFilters };
 		this.render_oqc_delivery_loading();
-		if (this.oqcFilters.source_type === "Delivery Plan" && !this.oqcFilters.delivery_plan) {
+		if (filters.source_type === "Delivery Plan" && !filters.delivery_plan) {
 			this.oqcDeliveryNotes = [];
 			this.render_oqc_delivery_notes([]);
 			this.render_oqc_items_empty(__("Select Delivery Plan."));
 			return Promise.resolve();
 		}
 		this.body.find(".jce-q-oqc-items-panel .jce-q-section-head b").text(
-			this.oqcFilters.delivery_note || this.oqcFilters.delivery_plan || __("Select Delivery Note.")
+			filters.delivery_note || filters.delivery_plan || __("Select Delivery Note.")
 		);
 		return frappe.call({
 			method: "jce_quality.api.quality.get_delivery_oqc_delivery_notes",
 			args: {
-				from_date: this.oqcFilters.from_date,
-				to_date: this.oqcFilters.to_date,
-				customer: this.oqcFilters.customer,
-				delivery_note: this.oqcFilters.delivery_note,
-				delivery_plan: this.oqcFilters.source_type === "Delivery Plan" ? this.oqcFilters.delivery_plan : "",
+				from_date: filters.from_date,
+				to_date: filters.to_date,
+				customer: filters.customer,
+				delivery_note: filters.delivery_note,
+				delivery_plan: filters.source_type === "Delivery Plan" ? filters.delivery_plan : "",
 			},
 			freeze: true,
 			freeze_message: __("Loading Delivery Notes..."),
 		}).then((r) => {
+			if (requestId !== this.oqcRequestId || this.mode !== "oqc") return;
 			this.oqcDeliveryNotes = r.message || [];
 			this.render_oqc_delivery_notes(this.oqcDeliveryNotes);
-			if (this.oqcFilters.source_type === "Delivery Plan" && this.oqcFilters.delivery_plan) {
-				return this.load_delivery_plan_oqc_items(this.oqcFilters.delivery_plan);
+			if (filters.delivery_note) {
+				return this.load_oqc_items(filters.delivery_note);
 			}
-			if (this.oqcFilters.delivery_note) {
-				return this.load_oqc_items(this.oqcFilters.delivery_note);
+			if (filters.source_type === "Delivery Plan" && filters.delivery_plan) {
+				return this.load_delivery_plan_oqc_items(filters.delivery_plan);
 			}
 			this.render_oqc_items_empty(__("Select Delivery Note."));
 		}).catch((error) => {
+			if (requestId !== this.oqcRequestId || this.mode !== "oqc") return;
 			console.error(error);
 			this.body.find(".jce-q-oqc-delivery-list").html(`<div class="jce-q-empty compact">${__("Unable to load Delivery Notes.")}</div>`);
 		});
@@ -817,6 +840,8 @@ class QualityInspectionTerminal {
 	}
 
 	load_oqc_items(deliveryNote) {
+		const requestId = ++this.oqcItemsRequestId;
+		const expectedDeliveryNote = deliveryNote || "";
 		this.body.find(".jce-q-oqc-items").html(`<div class="jce-q-empty compact">${__("Loading...")}</div>`);
 		return frappe.call({
 			method: "jce_quality.api.quality.get_delivery_oqc_items",
@@ -824,15 +849,19 @@ class QualityInspectionTerminal {
 			freeze: true,
 			freeze_message: __("Loading OQC Items..."),
 		}).then((r) => {
+			if (requestId !== this.oqcItemsRequestId || this.mode !== "oqc" || (this.oqcFilters.delivery_note || "") !== expectedDeliveryNote) return;
 			this.oqcItems = r.message || [];
 			this.render_oqc_items(this.oqcItems);
 		}).catch((error) => {
+			if (requestId !== this.oqcItemsRequestId || this.mode !== "oqc") return;
 			console.error(error);
 			this.render_oqc_items_empty(__("Unable to load OQC Items."));
 		});
 	}
 
 	load_delivery_plan_oqc_items(deliveryPlan) {
+		const requestId = ++this.oqcItemsRequestId;
+		const expectedDeliveryPlan = deliveryPlan || "";
 		this.body.find(".jce-q-oqc-items-panel .jce-q-section-head b").text(deliveryPlan || __("Select Delivery Plan."));
 		this.body.find(".jce-q-oqc-items").html(`<div class="jce-q-empty compact">${__("Loading...")}</div>`);
 		return frappe.call({
@@ -841,9 +870,17 @@ class QualityInspectionTerminal {
 			freeze: true,
 			freeze_message: __("Loading OQC Items..."),
 		}).then((r) => {
+			if (
+				requestId !== this.oqcItemsRequestId
+				|| this.mode !== "oqc"
+				|| this.oqcFilters.source_type !== "Delivery Plan"
+				|| (this.oqcFilters.delivery_plan || "") !== expectedDeliveryPlan
+				|| this.oqcFilters.delivery_note
+			) return;
 			this.oqcItems = r.message || [];
 			this.render_oqc_items(this.oqcItems);
 		}).catch((error) => {
+			if (requestId !== this.oqcItemsRequestId || this.mode !== "oqc") return;
 			console.error(error);
 			this.render_oqc_items_empty(__("Unable to load OQC Items."));
 		});

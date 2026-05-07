@@ -2336,13 +2336,7 @@ def make_delivery_oqc_group_key(item_code: str, warehouse: str | None = None, uo
 
 def get_delivery_plan_oqc_groups(plan) -> dict[str, dict]:
 	groups = {}
-	source_rows = list(plan.get("item_qties") or []) or list(plan.get("items") or [])
-	for row in source_rows:
-		if not row.get("item_code") or not row.get("name"):
-			continue
-		qty = get_delivery_plan_row_qty(row)
-		if qty <= 0:
-			continue
+	for row, qty in get_delivery_plan_oqc_source_rows(plan):
 		groups[row.name] = {
 			"item_code": row.item_code,
 			"item_name": row.get("item_name"),
@@ -2354,10 +2348,25 @@ def get_delivery_plan_oqc_groups(plan) -> dict[str, dict]:
 	return groups
 
 
+def get_delivery_plan_oqc_source_rows(plan) -> list[tuple[object, float]]:
+	for rows in (list(plan.get("item_qties") or []), list(plan.get("items") or [])):
+		eligible = []
+		for row in rows:
+			if not row.get("item_code") or not row.get("name"):
+				continue
+			qty = get_delivery_plan_row_qty(row)
+			if qty > 0:
+				eligible.append((row, qty))
+		if eligible:
+			return eligible
+	return []
+
+
 def get_delivery_plan_row_qty(row) -> float:
 	for fieldname in (
 		"planned_delivery_qty",
 		"staging_qty",
+		"assigned_qty",
 		"actual_qty",
 		"allocated_actual_qty",
 		"qty",
