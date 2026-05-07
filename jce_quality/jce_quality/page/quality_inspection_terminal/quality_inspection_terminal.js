@@ -240,6 +240,7 @@ class QualityInspectionTerminal {
 		this.body.find('[data-action="manual-check"]').on("click", () => this.open_manual_check_dialog());
 		this.body.find('[data-action="oqc-check"]').on("click", () => this.render_oqc_terminal_view());
 		this.render_filters();
+		this.bind_mobile_input_focus();
 		this.render_tasks();
 	}
 
@@ -632,6 +633,7 @@ class QualityInspectionTerminal {
 		this.body.find('[data-action="oqc-load"]').on("click", () => this.refresh_oqc_delivery_notes());
 		this.body.find('[data-action="clear-delivery-note"]').on("click", () => this.select_oqc_delivery_note(""));
 		this.render_oqc_filters();
+		this.bind_mobile_input_focus();
 		if (options.refresh !== false) {
 			this.refresh_oqc_delivery_notes();
 		}
@@ -741,11 +743,11 @@ class QualityInspectionTerminal {
 		}).then((r) => {
 			this.oqcDeliveryNotes = r.message || [];
 			this.render_oqc_delivery_notes(this.oqcDeliveryNotes);
+			if (this.oqcFilters.source_type === "Delivery Plan" && this.oqcFilters.delivery_plan) {
+				return this.load_delivery_plan_oqc_items(this.oqcFilters.delivery_plan);
+			}
 			if (this.oqcFilters.delivery_note) {
 				return this.load_oqc_items(this.oqcFilters.delivery_note);
-			}
-			if (this.oqcFilters.source_type === "Delivery Plan" && this.oqcFilters.delivery_plan && !this.oqcDeliveryNotes.length) {
-				return this.load_delivery_plan_oqc_items(this.oqcFilters.delivery_plan);
 			}
 			this.render_oqc_items_empty(__("Select Delivery Note."));
 		}).catch((error) => {
@@ -794,12 +796,12 @@ class QualityInspectionTerminal {
 		this.render_oqc_delivery_notes(this.oqcDeliveryNotes || []);
 		this.body.find(".jce-q-oqc-items-panel .jce-q-section-head b").text(this.oqcFilters.delivery_note || __("Select Delivery Note."));
 		if (!this.oqcFilters.delivery_note) {
-			if (
-				this.oqcFilters.source_type === "Delivery Plan"
-				&& this.oqcFilters.delivery_plan
-				&& !(this.oqcDeliveryNotes || []).length
-			) {
+			if (this.oqcFilters.source_type === "Delivery Plan" && this.oqcFilters.delivery_plan) {
 				this.body.find(".jce-q-oqc-items-panel .jce-q-section-head b").text(this.oqcFilters.delivery_plan);
+				if (options.refreshList) {
+					this.refresh_oqc_delivery_notes();
+					return;
+				}
 				this.load_delivery_plan_oqc_items(this.oqcFilters.delivery_plan);
 			} else {
 				this.render_oqc_items_empty(__("Select Delivery Note."));
@@ -1029,6 +1031,7 @@ class QualityInspectionTerminal {
 		this.bind_focus_events(submitted);
 		this.setup_sample_control(submitted);
 		this.setup_defect_controls(submitted);
+		this.bind_mobile_input_focus();
 		this.render_task_drawer();
 		this.setup_split_resizer();
 		this.render_current_drawing();
@@ -1962,6 +1965,35 @@ class QualityInspectionTerminal {
 	show_drawing() {
 		this.drawingHidden = false;
 		this.render_focus_shell();
+	}
+
+	bind_mobile_input_focus() {
+		const selector = [
+			".jce-q-filter input:not([type='hidden']):not([type='checkbox']):not([type='radio']):not([disabled])",
+			".jce-q-inspection-pane input:not([type='hidden']):not([type='checkbox']):not([type='radio']):not([disabled])",
+			".jce-q-sheet input:not([type='hidden']):not([type='checkbox']):not([type='radio']):not([disabled])",
+			".jce-q-terminal textarea:not([disabled])",
+		].join(", ");
+		this.body
+			.off("touchend.jceMobileInputFocus", selector)
+			.on("touchend.jceMobileInputFocus", selector, (event) => {
+				if (!this.is_phone_portrait()) return;
+				const input = event.currentTarget;
+				const type = (input.getAttribute("type") || "text").toLowerCase();
+				if (["button", "color", "date", "datetime-local", "file", "month", "reset", "submit", "time", "week"].includes(type)) {
+					return;
+				}
+				if (document.activeElement === input) return;
+				try {
+					input.focus({ preventScroll: true });
+				} catch {
+					input.focus();
+				}
+			});
+	}
+
+	is_phone_portrait() {
+		return !!window.matchMedia?.("(max-width: 640px) and (orientation: portrait)")?.matches;
 	}
 
 	bind_fullscreen_change() {
@@ -5114,6 +5146,13 @@ class QualityInspectionTerminal {
 					.jce-q-readonly-link {
 						height: 34px;
 						min-height: 34px;
+					}
+					.jce-q-terminal input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]),
+					.jce-q-terminal textarea {
+						font-size: 16px;
+						touch-action: manipulation;
+						-webkit-user-select: text;
+						user-select: text;
 					}
 					.jce-q-focus-toolbar {
 						min-height: 0;
