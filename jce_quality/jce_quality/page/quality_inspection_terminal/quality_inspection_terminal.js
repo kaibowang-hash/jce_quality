@@ -5038,16 +5038,33 @@ class QualityInspectionTerminal {
 						overflow: visible;
 					}
 				}
-				@media (max-width: 640px) and (orientation: portrait) and (pointer: coarse) {
+				@media (max-width: 640px) and (orientation: portrait) {
 					.jce-q-task-shell {
 						padding: max(7px, env(safe-area-inset-top)) 8px max(12px, env(safe-area-inset-bottom));
 					}
-					.jce-q-list-header {
+					.jce-q-task-shell:not(.jce-q-oqc-shell) .jce-q-list-header {
+						align-items: flex-start;
+						flex-direction: row;
 						gap: 7px;
+						justify-content: space-between;
 						margin-bottom: 7px;
+					}
+					.jce-q-task-shell:not(.jce-q-oqc-shell) .jce-q-list-header > div:first-child {
+						flex: 1 1 auto;
+						min-width: 0;
 					}
 					.jce-q-list-header h2 {
 						font-size: 20px;
+					}
+					.jce-q-task-shell:not(.jce-q-oqc-shell) .jce-q-list-actions {
+						align-items: flex-start;
+						flex: 0 0 auto;
+						justify-content: flex-end;
+						margin-left: auto;
+						min-width: 34px;
+					}
+					.jce-q-task-shell:not(.jce-q-oqc-shell) .jce-q-list-actions .jce-q-fullscreen-button {
+						margin-left: auto;
 					}
 					.jce-q-filter-panel:not(.oqc) {
 						margin-bottom: 8px;
@@ -5059,10 +5076,16 @@ class QualityInspectionTerminal {
 						justify-content: space-between;
 						gap: 8px;
 						margin-bottom: 6px;
+						width: 100%;
+					}
+					.jce-q-filter-head .jce-q-filter-title {
+						flex: 1 1 auto;
+						min-width: 0;
 					}
 					.jce-q-filter-panel:not(.oqc) .jce-q-mobile-filter-refresh {
 						display: inline-flex !important;
 						flex: 0 0 auto;
+						margin-left: auto;
 						width: 34px !important;
 						min-width: 34px !important;
 						height: 34px;
@@ -5124,6 +5147,7 @@ class QualityInspectionTerminal {
 					.jce-q-nav-buttons button {
 						flex: 0 0 auto;
 					}
+					.jce-q-task-shell:not(.jce-q-oqc-shell) .jce-q-list-header .jce-q-small-button.icon,
 					.jce-q-focus-toolbar .jce-q-small-button.icon,
 					.jce-q-oqc-shell .jce-q-small-button.icon {
 						width: 34px;
@@ -5188,6 +5212,7 @@ class QualityInspectionTerminal {
 						align-items: center;
 						flex-direction: row;
 						gap: 7px;
+						justify-content: space-between;
 						margin-bottom: 6px;
 					}
 					.jce-q-oqc-shell .jce-q-toolbar-left {
@@ -5195,6 +5220,7 @@ class QualityInspectionTerminal {
 						flex: 1 1 auto;
 						flex-direction: row;
 						gap: 7px;
+						justify-content: flex-start;
 						width: auto;
 						min-width: 0;
 					}
@@ -5217,6 +5243,8 @@ class QualityInspectionTerminal {
 						align-items: center;
 						flex-direction: row;
 						gap: 5px;
+						justify-content: flex-end;
+						margin-left: auto;
 						width: auto;
 					}
 					.jce-q-oqc-shell .jce-q-list-actions .jce-q-small-button.primary {
